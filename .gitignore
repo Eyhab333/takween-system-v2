@@ -12,7 +12,7 @@
 
 # testing
 /coverage
-
+firebase.ts
 # next.js
 /.next/
 /out/

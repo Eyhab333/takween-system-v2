@@ -1,0 +1,4 @@
+[
+  { "email": "emp1@takween.com", "password": "Strong#123", "name": "موظف 1", "role": "teacher" },
+  { "email": "emp2@takween.com", "password": "Strong#123", "name": "موظف 2", "role": "admin" }
+]
