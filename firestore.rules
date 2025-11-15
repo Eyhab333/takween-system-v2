@@ -1,0 +1,47 @@
+// يسمح بالقراءة لأي مستخدم مسجّل دخول.
+// ويسمح بالكتابة (إضافة/تعديل/حذف) في الشهادات والتقييمات فقط لمن دورهم HR أو أعلى.
+
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // دوال مساعدة
+    function isSignedIn() { 
+      return request.auth != null; 
+    }
+
+    // نقرأ الدور من الـ Custom Claims التي وضعناها أثناء الاستيراد (bulk import)
+    function role() { 
+      return request.auth.token.role; 
+    }
+
+    // ترتيب الأدوار من الأقل للأعلى
+    function hasRoleAtLeast(min) {
+      return ["employee","hr","chairman","ceo","admin","superadmin"].indexOf(role()) >=
+             ["employee","hr","chairman","ceo","admin","superadmin"].indexOf(min);
+    }
+
+    // وثائق المستخدمين نفسها: قراءة فقط (لا كتابة من الواجهة حالياً)
+    match /users/{uid} {
+      allow read: if isSignedIn();
+      allow write: if false;
+    }
+
+    // الشهادات: HR فأعلى مسموح لهم الإضافة/الحذف/التعديل
+    match /users/{uid}/certificates/{docId} {
+      allow read: if isSignedIn();
+      allow write: if hasRoleAtLeast("hr");
+    }
+
+    // التقييمات: HR فأعلى مسموح لهم الإضافة/الحذف/التعديل
+    match /users/{uid}/evaluations/{docId} {
+      allow read: if isSignedIn();
+      allow write: if hasRoleAtLeast("hr");
+    }
+
+    // أي مسارات أخرى: مغلقة
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}

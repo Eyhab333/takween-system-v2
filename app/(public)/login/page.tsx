@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 "use client"
 
 import { useForm } from "react-hook-form"
@@ -31,17 +32,36 @@ export default function LoginPage() {
   const [show, setShow] = useState(false)
 
   const onSubmit = async ({ email, password, remember }: FormData) => {
-    try {
-      // التذكّر: لو مؤشَّر → local (يبقى بعد إغلاق المتصفح)، غير كده → session
-      await setPersistence(auth, remember ? browserLocalPersistence : browserSessionPersistence)
-      await signInWithEmailAndPassword(auth, email, password)
-      toast.success("تم تسجيل الدخول")
+  try {
+    await setPersistence(auth, remember ? browserLocalPersistence : browserSessionPersistence)
+    await signInWithEmailAndPassword(auth, email, password)
+
+    // 👇 بعد النجاح: اقرأ الـ claims وحدّد الوجهة حسب الدور
+    const token = await auth.currentUser!.getIdTokenResult(true)
+    const role = token.claims?.role as string | undefined
+    const uid  = auth.currentUser!.uid
+    const isHrOrAbove = ["hr","chairman","ceo","admin","superadmin"].includes(role || "")
+
+    if (isHrOrAbove) {
       router.replace("/dashboard")
-    } catch (e: any) {
-      const msg = e?.code?.replace("auth/", "") ?? "فشل تسجيل الدخول"
-      toast.error(msg)
+    } else {
+      router.replace(`/employees/${uid}`)    // 👈 الموظف العادي → بروفايله
     }
+  
+  } catch (e: any) {
+    console.error("Login error:", e)
+    const code = String(e?.code || "").replace("auth/", "")
+    const map: Record<string, string> = {
+      "invalid-credential": "بيانات الدخول غير صحيحة",
+      "user-not-found": "المستخدم غير موجود",
+      "wrong-password": "كلمة المرور غير صحيحة",
+      "too-many-requests": "محاولات كثيرة، جرّب لاحقًا",
+      "network-request-failed": "مشكلة شبكة",
+    }
+    toast.error(`${map[code] || "فشل تسجيل الدخول"} (${code || "unknown"})`)
   }
+}
+
 
   return (
     <main className="min-h-[70vh] grid place-items-center">
