@@ -189,17 +189,29 @@ export default function EmployeeProfilePage() {
         }
       }
 
+      // 🟢 هنا بنجمع كل البيانات اللي هتتحفظ في Firestore
+      const payload = {
+        title,
+        fileUrl, // لو مفيش ملف هتظل ""
+        date: date || null,
+        createdAt: serverTimestamp(),
+
+        // بيانات الموظف عشان صفحة الشهادات العامة
+        employeeId: targetUid,
+        employeeName: user?.name || null,
+        employeeDepartment: user?.department || null,
+        employeePosition: user?.position || null,
+        employeeEmail: user?.email || null,
+      };
+
       const refDoc = await addDoc(
         collection(db, "users", targetUid, "certificates"),
-        {
-          title,
-          fileUrl, // لو مفيش ملف هتظل ""
-          date: date || null,
-          createdAt: serverTimestamp(),
-        }
+        payload
       );
 
+      // 🟢 في صفحة الموظف إحنا محتاجين بس عرض بسيط، فبنحتفظ بالحقول المهمة فقط
       setCerts((prev) => [{ id: refDoc.id, title, fileUrl, date }, ...prev]);
+
       toast.success("تمت إضافة الشهادة");
       (document.getElementById("cert-form") as HTMLFormElement)?.reset();
     } catch (e: any) {
