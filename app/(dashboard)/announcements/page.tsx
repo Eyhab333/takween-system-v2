@@ -80,8 +80,12 @@ export default function AnnouncementsPage() {
   useEffect(() => {
     if (loading || !uid) return;
     (async () => {
-      const snap = await getDoc(doc(db, "users", uid));
-      setMyUserDoc(snap.exists() ? { id: snap.id, ...snap.data() } : null);
+      try {
+        const snap = await getDoc(doc(db, "users", uid));
+        setMyUserDoc(snap.exists() ? { id: snap.id, ...snap.data() } : null);
+      } catch (e) {
+        console.error(e);
+      }
     })();
   }, [loading, uid]);
 
@@ -140,7 +144,7 @@ export default function AnnouncementsPage() {
     })();
   }, [uid, myUserDoc, viewMode]);
 
-  // إنشاء تعميم مع اختيار الجمهور
+  // إنشاء تعميم مع اختيار الجمهور + إشعارات
   async function addAnnouncement(form: FormData) {
     if (!isHrOrAbove) return;
     try {
@@ -175,7 +179,8 @@ export default function AnnouncementsPage() {
         return;
       }
 
-      await addDoc(collection(db, "announcements"), {
+      // حفظ التعميم نفسه
+      const annRef = await addDoc(collection(db, "announcements"), {
         title,
         content,
         audTokens,
@@ -184,10 +189,31 @@ export default function AnnouncementsPage() {
         pinned: false,
       });
 
+      // إشعارات للمستهدفين
+      try {
+        const targetUids = await resolveAudienceUserIds(audTokens);
+        if (targetUids.length > 0) {
+          const notifPromises = targetUids.map((userId) =>
+            addDoc(collection(db, "users", userId, "notifications"), {
+              title: "تعميم جديد",
+              body: title,
+              type: "announcement",
+              link: "/announcements",
+              annId: annRef.id,
+              createdAt: serverTimestamp(),
+              read: false,
+            })
+          );
+          await Promise.all(notifPromises);
+        }
+      } catch (e) {
+        console.warn("announcement notifications error:", e);
+      }
+
       toast.success("تم إنشاء التعميم");
       (document.getElementById("ann-form") as HTMLFormElement)?.reset();
 
-      // إعادة تحميل مبسطة
+      // إعادة تحميل مبسطة (الموجّه لي)
       const tokens = buildUserTokens({
         unit: myUserDoc?.unit ?? null,
         schoolKey: myUserDoc?.schoolKey ?? null,
@@ -501,8 +527,9 @@ function AnnRow({
 }
 
 // ======= أدوات مساعدة =======
+
+// تحويل وسوم free-text إلى مصفوفة
 function parseTags(s: string): string[] {
-  // "teachers; staff ;  , ;  " => ["teachers","staff"]
   const raw = s
     .replace(/,/g, ";")
     .split(";")
@@ -511,6 +538,7 @@ function parseTags(s: string): string[] {
   return Array.from(new Set(raw));
 }
 
+// audTokens من خيارات الجمهور
 function buildAudienceTokens({
   all,
   schools,
@@ -536,6 +564,7 @@ function buildAudienceTokens({
   return Array.from(new Set(tokens));
 }
 
+// tokens الخاصة بمستخدم معين
 function buildUserTokens(user: {
   unit?: string | null;
   schoolKey?: string | null;
@@ -553,6 +582,7 @@ function buildUserTokens(user: {
   return Array.from(new Set(tokens));
 }
 
+// ترجمة audTokens لنص مقروء
 function renderAudienceHint(audTokens: string[]) {
   if (audTokens.includes("all:all")) return "موجّه إلى: الجميع";
   const mapLabel = (tok: string) => {
@@ -569,4 +599,90 @@ function renderAudienceHint(audTokens: string[]) {
   };
   const readable = audTokens.map(mapLabel).join(" • ");
   return `موجّه إلى: ${readable}`;
+}
+
+// استخراج قائمة الـ UIDs المستهدفة من audTokens
+async function resolveAudienceUserIds(audTokens: string[]): Promise<string[]> {
+  const hasAll = audTokens.includes("all:all");
+
+  const schoolKeys: string[] = [];
+  const units: string[] = [];
+  const roles: string[] = [];
+  const tags: string[] = [];
+
+  for (const tok of audTokens) {
+    if (tok.startsWith("schoolKey:")) {
+      schoolKeys.push(tok.split(":")[1]);
+    } else if (tok.startsWith("unit:")) {
+      units.push(tok.split(":")[1]);
+    } else if (tok.startsWith("role:")) {
+      roles.push(tok.split(":")[1]);
+    } else if (tok.startsWith("tag:")) {
+      tags.push(tok.split(":")[1]);
+    }
+  }
+
+  const seen = new Set<string>();
+  const queries: Promise<any>[] = [];
+
+  // "للجميع" = كل من عليه tag staff (أو كل الموظفين لو حابب تعدّلها لاحقًا)
+  if (hasAll) {
+    queries.push(
+      getDocs(
+        query(
+          collection(db, "users"),
+          where("tags", "array-contains", "staff"),
+          limit(500)
+        )
+      )
+    );
+  }
+
+  for (const sk of schoolKeys) {
+    queries.push(
+      getDocs(
+        query(collection(db, "users"), where("schoolKey", "==", sk), limit(500))
+      )
+    );
+  }
+
+  for (const u of units) {
+    queries.push(
+      getDocs(
+        query(collection(db, "users"), where("unit", "==", u), limit(500))
+      )
+    );
+  }
+
+  for (const r of roles) {
+    queries.push(
+      getDocs(
+        query(collection(db, "users"), where("role", "==", r), limit(500))
+      )
+    );
+  }
+
+  for (const t of tags) {
+    queries.push(
+      getDocs(
+        query(
+          collection(db, "users"),
+          where("tags", "array-contains", t),
+          limit(500)
+        )
+      )
+    );
+  }
+
+  const snaps = await Promise.all(queries);
+
+  for (const snap of snaps) {
+    for (const docSnap of snap.docs) {
+      const data = docSnap.data() as any;
+      const userId = data.uid || docSnap.id;
+      if (userId) seen.add(userId);
+    }
+  }
+
+  return Array.from(seen);
 }
