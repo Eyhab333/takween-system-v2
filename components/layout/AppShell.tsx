@@ -6,6 +6,9 @@ import { useEffect } from "react";
 import useClaimsRole from "@/hooks/use-claims-role";
 import { hasRoleAtLeast, Role } from "@/lib/roles";
 import { Button } from "@/components/ui/button";
+import ThemeToggle from "@/components/layout/ThemeToggle"
+import { NotificationBell } from "@/components/layout/NotificationBell";
+
 
 type NavItem = { label: string; href: string; minRole: Role };
 
@@ -103,9 +106,8 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
               <Link
                 key={it.href}
                 href={targetHref}
-                className={`block rounded px-3 py-2 text-sm ${
-                  active ? "bg-muted font-semibold" : "hover:bg-muted"
-                }`}
+                className={`block rounded px-3 py-2 text-sm ${active ? "bg-muted font-semibold" : "hover:bg-muted"
+                  }`}
               >
                 {it.label}
               </Link>
@@ -183,7 +185,10 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
                   تسجيل الخروج
                 </Button>
               </form>
+
             </div>
+            <NotificationBell />
+            <ThemeToggle />
           </div>
         </header>
 

@@ -2,527 +2,545 @@
 "use client";
 
 import { useEffect, useState, useTransition } from "react";
-import { useParams, useRouter } from "next/navigation";
-import { db, auth, storage } from "@/lib/firebase";
+import { db } from "@/lib/firebase";
 import {
-  doc,
-  getDoc,
   collection,
-  getDocs,
-  orderBy,
-  query,
   addDoc,
-  deleteDoc,
   serverTimestamp,
+  query,
+  where,
+  orderBy,
+  limit,
+  getDocs,
+  doc,
+  deleteDoc,
+  getDoc,
+  setDoc,
 } from "firebase/firestore";
-import { ref, uploadBytes, getDownloadURL } from "firebase/storage";
 
+import useClaimsRole, { Role } from "@/hooks/use-claims-role";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
-import { Separator } from "@/components/ui/separator";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
+import { Separator } from "@/components/ui/separator";
 import { toast } from "sonner";
 
-import useClaimsRole, { Role } from "@/hooks/use-claims-role";
-// لو ما عندك RoleGate، تقدر تشيل استخدامه أدناه أو تعمل Gate بسيط محلياً
-import RoleGate from "@/components/auth/RoleGate";
-import { where, limit as qlimit } from "firebase/firestore";
-
-type UserDoc = {
-  uid: string;
-  name?: string;
-  email?: string;
-  department?: string;
-  position?: string;
-  role?: string;
-  personalInfo?: { phone?: string; nationalId?: string };
-};
-
-type Certificate = { id: string; title?: string; fileUrl?: string; date?: any };
-type Evaluation = { id: string; year?: number; score?: number; notes?: string };
-
+// ======= ثوابت الاستهداف =======
 const HR_ROLES: Role[] = ["hr", "chairman", "ceo", "admin", "superadmin"];
 
-export default function EmployeeProfilePage() {
-  // uid المستهدف من الراوت: /employees/[uid]
-  const params = useParams<{ uid: string }>();
-  const targetUid = params.uid;
+const SCHOOL_OPTIONS = [
+  { key: "manar_boys", label: "منار الريادة — بنين" },
+  { key: "manar_girls", label: "منار الريادة — بنات" },
+  { key: "rawdat_1", label: "روضة واحة الرياحين الأولى" },
+  { key: "rawdat_2", label: "روضة واحة الرياحين الثانية" },
+  { key: "rawdat_3", label: "روضة واحة الرياحين الثالثة" },
+  { key: "rawdat_4", label: "روضة واحة الرياحين الرابعة" },
+] as const;
 
-  const router = useRouter();
+const UNIT_OPTIONS = [
+  { key: "council", label: "مجلس الإدارة" },
+  { key: "executive", label: "الإدارة التنفيذية" },
+  { key: "supervision", label: "الإشراف التعليمي" },
+  { key: "school", label: "المدارس" },
+] as const;
 
-  // مطالعة الدور/المستخدم الحالي
-  const { role, uid: myUid, loading: claimsLoading } = useClaimsRole();
+const ROLE_OPTIONS: Role[] = [
+  "employee",
+  "hr",
+  "chairman",
+  "ceo",
+  "admin",
+  "superadmin",
+];
 
-  // حالة تحميل بيانات الصفحة
-  const [dataLoading, setDataLoading] = useState(true);
-  const [user, setUser] = useState<UserDoc | null>(null);
-  const [certs, setCerts] = useState<Certificate[]>([]);
-  const [evals, setEvals] = useState<Evaluation[]>([]);
+// ======= أنواع محلية =======
+type Ann = {
+  id: string;
+  title: string;
+  content?: string;
+  createdAt?: any;
+  audTokens: string[];
+  createdBy?: string;
+  pinned?: boolean;
+};
+
+// ======= صفحة التعميمات =======
+export default function AnnouncementsPage() {
+  const { role, uid, loading } = useClaimsRole();
   const [pending, startTransition] = useTransition();
-  const [myAnns, setMyAnns] = useState<Ann[]>([]);
+  const [anns, setAnns] = useState<Ann[]>([]);
+  const [myUserDoc, setMyUserDoc] = useState<any>(null);
+  const [viewMode, setViewMode] = useState<"mine" | "all" | "forMe">("forMe");
 
-  type Ann = {
-    id: string;
-    title: string;
-    content?: string;
-    createdAt?: any;
-    audTokens: string[];
-  };
+  const isHrOrAbove = !!role && HR_ROLES.includes(role);
 
-  // حماية: الموظف العادي لا يفتح غير ملفه فقط
+  // حمّل وثيقة المستخدم لاستخراج userTokens لاحقًا
   useEffect(() => {
-    if (claimsLoading) return;
-    const isHrOrAbove = role ? HR_ROLES.includes(role) : false;
-    if (!isHrOrAbove && myUid && myUid !== targetUid) {
-      router.replace(`/employees/${myUid}`);
-    }
-  }, [claimsLoading, role, myUid, targetUid, router]);
+    if (loading || !uid) return;
+    (async () => {
+      const snap = await getDoc(doc(db, "users", uid));
+      setMyUserDoc(snap.exists() ? { id: snap.id, ...snap.data() } : null);
+    })();
+  }, [loading, uid]);
 
-  // تحميل بيانات الملف (بعد تحقق الصلاحيات)
+  // استعلام التعميمات الموجهة للمستخدم الحالي
   useEffect(() => {
-    if (claimsLoading) return;
-
-    let cancelled = false;
-    async function load() {
+    if (!uid) return;
+    (async () => {
       try {
-        setDataLoading(true);
+        let list: Ann[] = [];
 
-        // وثيقة الموظف
-        const userRef = doc(db, "users", targetUid);
-        const snap = await getDoc(userRef);
-        if (!snap.exists()) {
-          toast.error("الموظف غير موجود");
-          router.replace("/employees");
-          return;
-        }
-        if (cancelled) return;
-        setUser({ uid: targetUid, ...(snap.data() as any) });
-
-        try {
-          // كوّن توكنات هذا الموظف من وثيقته (مش من حسابك)
+        if (viewMode === "forMe") {
           const tokens = buildUserTokens({
-            unit: (snap.data() as any)?.unit ?? null,
-            schoolKey: (snap.data() as any)?.schoolKey ?? null,
-            schoolType: (snap.data() as any)?.schoolType ?? null,
-            tags: Array.isArray((snap.data() as any)?.tags)
-              ? (snap.data() as any)?.tags
-              : [],
-          }).slice(0, 10);
+            unit: myUserDoc?.unit ?? null,
+            schoolKey: myUserDoc?.schoolKey ?? null,
+            schoolType: myUserDoc?.schoolType ?? null,
+            tags: Array.isArray(myUserDoc?.tags) ? myUserDoc?.tags : [],
+          });
+          const tokens10 = tokens.slice(0, 10);
 
           const qy = query(
             collection(db, "announcements"),
-            where("audTokens", "array-contains-any", tokens),
+            where("audTokens", "array-contains-any", tokens10),
             orderBy("createdAt", "desc"),
-            qlimit(20)
+            limit(50)
           );
-          const annSnap = await getDocs(qy);
-          if (cancelled) return;
-          setMyAnns(
-            annSnap.docs.map((d) => ({ id: d.id, ...(d.data() as any) }))
-          );
-        } catch (e) {
-          console.warn("announcements load error", e);
+          const snap = await getDocs(qy);
+          list = snap.docs.map((d) => ({ id: d.id, ...(d.data() as any) }));
         }
 
-        // الشهادات
-        const certQ = query(
-          collection(db, "users", targetUid, "certificates"),
-          orderBy("date", "desc")
-        );
-        const certSnap = await getDocs(certQ);
-        if (cancelled) return;
-        setCerts(
-          certSnap.docs.map((d) => ({ id: d.id, ...(d.data() as any) }))
-        );
+        if (viewMode === "mine") {
+          const qy = query(
+            collection(db, "announcements"),
+            where("createdBy", "==", uid),
+            orderBy("createdAt", "desc"),
+            limit(50)
+          );
+          const snap = await getDocs(qy);
+          list = snap.docs.map((d) => ({ id: d.id, ...(d.data() as any) }));
+        }
 
-        // التقييمات
-        const evalQ = query(
-          collection(db, "users", targetUid, "evaluations"),
-          orderBy("year", "desc")
-        );
-        const evalSnap = await getDocs(evalQ);
-        if (cancelled) return;
-        setEvals(
-          evalSnap.docs.map((d) => ({ id: d.id, ...(d.data() as any) }))
-        );
+        if (viewMode === "all") {
+          const qy = query(
+            collection(db, "announcements"),
+            orderBy("createdAt", "desc"),
+            limit(50)
+          );
+          const snap = await getDocs(qy);
+          list = snap.docs.map((d) => ({ id: d.id, ...(d.data() as any) }));
+        }
+
+        setAnns(list);
       } catch (e) {
         console.error(e);
-        toast.error("تعذر تحميل الملف");
-      } finally {
-        if (!cancelled) setDataLoading(false);
+        toast.error("تعذر تحميل التعميمات");
       }
-    }
+    })();
+  }, [uid, myUserDoc, viewMode]);
 
-    load();
-    return () => {
-      cancelled = true;
-    };
-  }, [claimsLoading, targetUid, router]);
-
-  // ========== عمليات HR+ ==========
-  async function addCertificate(form: FormData) {
-    await auth.currentUser?.getIdToken(true); // تأكيد claims محدثة
-
-    const title = (form.get("title") as string)?.trim();
-    const date = (form.get("date") as string)?.trim();
-    const file = form.get("file") as File | null;
-
-    if (!title) {
-      toast.error("العنوان مطلوب");
-      return;
-    }
-
-    let fileUrl = "";
+  // إنشاء تعميم مع اختيار الجمهور
+  async function addAnnouncement(form: FormData) {
+    if (!isHrOrAbove) return;
     try {
-      // محاولة رفع الملف (لو التخزين غير مُهيّأ، سنلتقط الخطأ ونكمل بدون ملف)
-      if (file && file.size > 0) {
-        try {
-          const safeName = file.name.replace(/\s+/g, "_");
-          const path = `certificates/${targetUid}/${Date.now()}__${safeName}`;
-          const storageRef = ref(storage, path);
-          await uploadBytes(storageRef, file);
-          fileUrl = await getDownloadURL(storageRef);
-        } catch (err) {
-          console.warn("Storage upload skipped:", err);
-          // نكمل إضافة الشهادة بدون ملف
-        }
+      const title = (form.get("title") as string)?.trim();
+      const content = (form.get("content") as string)?.trim() || "";
+
+      if (!title) {
+        toast.error("العنوان مطلوب");
+        return;
       }
 
-      // 🟢 هنا بنجمع كل البيانات اللي هتتحفظ في Firestore
-      const payload = {
+      // قراءة اختيارات الجمهور من الفورم
+      const allFlag = form.get("aud_all") === "on";
+
+      const selectedSchools = form.getAll("aud_school") as string[]; // مفاتيح من SCHOOL_OPTIONS
+      const selectedUnits = form.getAll("aud_unit") as string[]; // council/executive/...
+      const selectedRoles = form.getAll("aud_role") as string[]; // employee/hr/...
+      const rawTags = (form.get("aud_tags") as string)?.trim() || "";
+      const tagList = parseTags(rawTags); // يحول "teachers;staff" => ["teachers","staff"]
+
+      // بناء audTokens
+      const audTokens = buildAudienceTokens({
+        all: allFlag,
+        schools: selectedSchools,
+        units: selectedUnits,
+        roles: selectedRoles,
+        tags: tagList,
+      });
+
+      if (audTokens.length === 0) {
+        toast.error("اختر جمهورًا للتعميم أو اختر (للجميع)");
+        return;
+      }
+
+      const annRef = await addDoc(collection(db, "announcements"), {
         title,
-        fileUrl, // لو مفيش ملف هتظل ""
-        date: date || null,
+        content,
+        audTokens,
         createdAt: serverTimestamp(),
+        createdBy: uid || null,
+        pinned: false,
+      });
 
-        // بيانات الموظف عشان صفحة الشهادات العامة
-        employeeId: targetUid,
-        employeeName: user?.name || null,
-        employeeDepartment: user?.department || null,
-        employeePosition: user?.position || null,
-        employeeEmail: user?.email || null,
-      };
+      // 🟢 إنشاء إشعارات لكل الجمهور المستهدف
+      try {
+        await fanoutAnnouncementNotifications(title, audTokens, annRef.id);
+      } catch (e) {
+        console.warn("fanout notifications error", e);
+      }
 
-      const refDoc = await addDoc(
-        collection(db, "users", targetUid, "certificates"),
-        payload
+      toast.success("تم إنشاء التعميم");
+      (document.getElementById("ann-form") as HTMLFormElement)?.reset();
+
+      // إعادة تحميل مبسطة (للوضع forMe الحالي)
+      const tokens = buildUserTokens({
+        unit: myUserDoc?.unit ?? null,
+        schoolKey: myUserDoc?.schoolKey ?? null,
+        schoolType: myUserDoc?.schoolType ?? null,
+        tags: Array.isArray(myUserDoc?.tags) ? myUserDoc?.tags : [],
+      }).slice(0, 10);
+
+      const qy = query(
+        collection(db, "announcements"),
+        where("audTokens", "array-contains-any", tokens),
+        orderBy("createdAt", "desc"),
+        limit(50)
       );
-
-      // 🟢 في صفحة الموظف إحنا محتاجين بس عرض بسيط، فبنحتفظ بالحقول المهمة فقط
-      setCerts((prev) => [{ id: refDoc.id, title, fileUrl, date }, ...prev]);
-
-      toast.success("تمت إضافة الشهادة");
-      (document.getElementById("cert-form") as HTMLFormElement)?.reset();
-    } catch (e: any) {
-      console.error("addCertificate error:", e?.code, e?.message);
-      toast.error(`فشل الإضافة: ${e?.code || "unknown"}`);
-    }
-  }
-
-  async function removeCertificate(id: string) {
-    try {
-      await auth.currentUser?.getIdToken(true);
-      await deleteDoc(doc(db, "users", targetUid, "certificates", id));
-      setCerts((prev) => prev.filter((c) => c.id !== id));
-      toast.success("تم الحذف");
-    } catch (e: any) {
-      console.error("removeCertificate error:", e?.code, e?.message);
-      toast.error(`فشل الحذف: ${e?.code || "unknown"}`);
-    }
-  }
-
-  async function addEvaluation(form: FormData) {
-    await auth.currentUser?.getIdToken(true);
-
-    const year = Number(form.get("year"));
-    const score = form.get("score") ? Number(form.get("score")) : undefined;
-    const notes = (form.get("notes") as string)?.trim();
-
-    if (!year || !Number.isFinite(year)) {
-      toast.error("أدخل سنة صحيحة");
-      return;
-    }
-
-    try {
-      const refDoc = await addDoc(
-        collection(db, "users", targetUid, "evaluations"),
-        {
-          year,
-          score:
-            typeof score === "number" && Number.isFinite(score) ? score : null,
-          notes: notes || "",
-          createdAt: serverTimestamp(),
-        }
-      );
-      setEvals((prev) => [
-        { id: refDoc.id, year, score: score ?? undefined, notes: notes || "" },
-        ...prev,
-      ]);
-      toast.success("تمت إضافة التقييم");
-      (document.getElementById("eval-form") as HTMLFormElement)?.reset();
+      const snap = await getDocs(qy);
+      setAnns(snap.docs.map((d) => ({ id: d.id, ...(d.data() as any) })));
     } catch (e: any) {
       console.error(e);
-      toast.error("فشل إضافة التقييم (تحقق من الصلاحيات)");
+      toast.error("فشل إنشاء التعميم");
     }
   }
 
-  async function removeEvaluation(id: string) {
+  // حذف تعميم (HR+ فقط)
+  async function deleteAnnouncement(id: string) {
+    if (!isHrOrAbove) return;
+    if (!confirm("حذف هذا التعميم؟ سيختفي من الجميع.")) return;
     try {
-      await auth.currentUser?.getIdToken(true);
-      await deleteDoc(doc(db, "users", targetUid, "evaluations", id));
-      setEvals((prev) => prev.filter((e) => e.id !== id));
-      toast.success("تم حذف التقييم");
+      await deleteDoc(doc(db, "announcements", id));
+      setAnns((prev) => prev.filter((a) => a.id !== id));
+      toast.success("تم حذف التعميم");
     } catch (e: any) {
       console.error(e);
-      toast.error("فشل حذف التقييم (تحقق من الصلاحيات)");
+      toast.error("فشل حذف التعميم (تحقق من الصلاحيات)");
     }
   }
 
-  // ========== عرض ==========
-  if (claimsLoading || dataLoading) {
-    return (
-      <div className="min-h-[40vh] grid place-items-center text-sm text-muted-foreground">
-        جارٍ التحميل…
-      </div>
-    );
+  // تبديل “مقروء/غير مقروء” للمستخدم الحالي
+  async function toggleRead(annId: string) {
+    if (!uid) return;
+    try {
+      const rdRef = doc(db, "announcements", annId, "reads", uid);
+      const rdSnap = await getDoc(rdRef);
+      if (rdSnap.exists()) {
+        await deleteDoc(rdRef); // اجعله "غير مقروء"
+      } else {
+        await setDoc(rdRef, { readAt: serverTimestamp() }); // اجعله "مقروء"
+      }
+      // UI مجرد تبديل محلي سريع
+      setAnns((prev) => [...prev]);
+    } catch (e: any) {
+      console.error(e);
+      toast.error("تعذر تبديل حالة القراءة");
+    }
   }
-  if (!user) return null;
+
+  if (loading) return null;
 
   return (
     <div className="grid gap-6">
-      {/* معلومات أساسية */}
       <Card>
         <CardHeader>
-          <CardTitle>ملف الموظف</CardTitle>
+          <CardTitle>إنشاء تعميم</CardTitle>
         </CardHeader>
-        <CardContent className="grid gap-3 md:grid-cols-2">
-          <Info label="الاسم" value={user.name} />
-          <Info label="القسم" value={user.department} />
-          <Info label="المسمى" value={user.position} />
-          <Info label="الدور" value={user.role} />
-          <Info label="البريد" value={user.email} mono />
-          <Info label="رقم الهوية" value={user.personalInfo?.nationalId} mono />
-          <Info label="الجوال" value={user.personalInfo?.phone} mono />
-          <Info label="UID" value={user.uid} mono />
-        </CardContent>
-      </Card>
+        <CardContent className="grid gap-6">
+          {/* نموذج الإضافة — HR+ فقط */}
+          {isHrOrAbove && (
+            <form
+              id="ann-form"
+              className="grid gap-4"
+              action={(fd) => startTransition(() => addAnnouncement(fd))}
+            >
+              <div className="grid md:grid-cols-2 gap-3">
+                <div className="md:col-span-2">
+                  <Label className="text-xs">العنوان</Label>
+                  <Input name="title" placeholder="مثال: تعميم هام" />
+                </div>
+                <div className="md:col-span-2">
+                  <Label className="text-xs">المحتوى (اختياري)</Label>
+                  <Textarea name="content" placeholder="نص التعميم ..." />
+                </div>
+              </div>
 
-      <Separator />
+              <Separator />
 
-      <Card>
-        <CardHeader>
-          <CardTitle>التعميمات </CardTitle>
-        </CardHeader>
-        <CardContent className="p-0">
-          <div className="divide-y">
-            {myAnns.length === 0 && (
+              {/* اختيار الجمهور */}
+              <div className="grid gap-2">
+                <div className="font-semibold">الجمهور المستهدف</div>
+
+                <label className="inline-flex items-center gap-2">
+                  <input type="checkbox" name="aud_all" />
+                  <span>للجميع</span>
+                </label>
+
+                <div className="grid md:grid-cols-3 gap-4">
+                  {/* المدارس */}
+                  <div className="border rounded p-3">
+                    <div className="text-sm font-medium mb-2">المدارس</div>
+                    <div className="grid gap-2">
+                      {SCHOOL_OPTIONS.map((s) => (
+                        <label
+                          key={s.key}
+                          className="inline-flex items-center gap-2"
+                        >
+                          <input
+                            type="checkbox"
+                            name="aud_school"
+                            value={s.key}
+                          />
+                          <span>{s.label}</span>
+                        </label>
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* الوحدات */}
+                  <div className="border rounded p-3">
+                    <div className="text-sm font-medium mb-2">الوحدات</div>
+                    <div className="grid gap-2">
+                      {UNIT_OPTIONS.map((u) => (
+                        <label
+                          key={u.key}
+                          className="inline-flex items-center gap-2"
+                        >
+                          <input
+                            type="checkbox"
+                            name="aud_unit"
+                            value={u.key}
+                          />
+                          <span>{u.label}</span>
+                        </label>
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* الأدوار */}
+                  <div className="border rounded p-3">
+                    <div className="text-sm font-medium mb-2">الأدوار</div>
+                    <div className="grid gap-2">
+                      {ROLE_OPTIONS.map((r) => (
+                        <label
+                          key={r}
+                          className="inline-flex items-center gap-2"
+                        >
+                          <input type="checkbox" name="aud_role" value={r} />
+                          <span>{r}</span>
+                        </label>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+
+                {/* الوسوم الحرة */}
+                <div className="grid gap-2">
+                  <Label className="text-xs">
+                    وسوم إضافية (اختياري) — افصل بـ ;
+                  </Label>
+                  <Input name="aud_tags" placeholder="teachers;staff" />
+                </div>
+
+                <div className="flex items-center gap-2">
+                  <Button type="submit" disabled={pending}>
+                    إضافة التعميم
+                  </Button>
+                  <span className="text-xs text-muted-foreground">
+                    لو اخترت (للجميع) لن نُضيف اختيارات أخرى؛ أما بدونها فسنحوّل
+                    الاختيارات إلى audTokens.
+                  </span>
+                </div>
+              </div>
+            </form>
+          )}
+
+          <CardHeader>
+            <CardTitle>جميع التعميمات </CardTitle>
+          </CardHeader>
+          {isHrOrAbove && (
+            <div className="flex flex-wrap gap-2">
+              <Button
+                variant={viewMode === "forMe" ? "default" : "outline"}
+                size="sm"
+                onClick={() => setViewMode("forMe")}
+              >
+                الموجّه لي
+              </Button>
+              <Button
+                variant={viewMode === "mine" ? "default" : "outline"}
+                size="sm"
+                onClick={() => setViewMode("mine")}
+              >
+                ما أنشأتُه
+              </Button>
+              <Button
+                variant={viewMode === "all" ? "default" : "outline"}
+                size="sm"
+                onClick={() => setViewMode("all")}
+              >
+                جميع التعميمات
+              </Button>
+            </div>
+          )}
+
+          {/* القائمة */}
+          <div className="rounded-md border">
+            {anns.length === 0 ? (
               <div className="p-4 text-sm text-muted-foreground">
                 لا توجد تعميمات
               </div>
-            )}
-            {myAnns.map((a) => (
-              <div key={a.id} className="p-4">
-                <div className="font-medium">{a.title}</div>
-                {a.content ? (
-                  <div className="text-sm text-muted-foreground mt-1 whitespace-pre-wrap">
-                    {a.content}
-                  </div>
-                ) : null}
-                {a.createdAt?.toDate && (
-                  <div className="text-xs text-muted-foreground mt-1">
-                    {a.createdAt.toDate().toLocaleString("ar-SA")}
-                  </div>
-                )}
+            ) : (
+              <div className="divide-y">
+                {anns.map((a) => (
+                  <AnnRow
+                    key={a.id}
+                    ann={a}
+                    myUid={uid || ""}
+                    canDelete={isHrOrAbove}
+                    onDelete={() => deleteAnnouncement(a.id)}
+                    onToggleRead={() => toggleRead(a.id)}
+                  />
+                ))}
               </div>
-            ))}
+            )}
           </div>
         </CardContent>
       </Card>
-
-      <Separator />
-
-      {/* الشهادات */}
-      <div className="grid gap-3">
-        <div className="flex items-center justify-between">
-          <h2 className="text-lg font-bold">الشهادات</h2>
-
-          {/* أدوات الإدارة تظهر فقط لـ HR+ */}
-          <RoleGate min="hr" fallback={null}>
-            <form
-              id="cert-form"
-              className="flex flex-wrap items-end gap-2"
-              action={(fd) => startTransition(() => addCertificate(fd))}
-            >
-              <div>
-                <Label className="text-xs">العنوان</Label>
-                <Input name="title" placeholder="عنوان الشهادة" />
-              </div>
-              <div>
-                <Label className="text-xs">ملف الشهادة (اختياري)</Label>
-                <Input name="file" type="file" accept=".pdf,.jpg,.jpeg,.png" />
-              </div>
-              <div>
-                <Label className="text-xs">التاريخ</Label>
-                <Input name="date" type="date" />
-              </div>
-              <Button type="submit" disabled={pending}>
-                إضافة
-              </Button>
-            </form>
-          </RoleGate>
-        </div>
-
-        <Card>
-          <CardContent className="p-0">
-            <div className="divide-y">
-              {certs.length === 0 && (
-                <div className="p-4 text-sm text-muted-foreground">
-                  لا توجد شهادات
-                </div>
-              )}
-              {certs.map((c) => (
-                <div
-                  key={c.id}
-                  className="p-4 flex items-center justify-between gap-3"
-                >
-                  <div className="min-w-0">
-                    <div className="font-medium truncate">{c.title || "—"}</div>
-                    <div className="text-xs text-muted-foreground">
-                      {formatDate(c.date)} {c.fileUrl ? "• " : ""}
-                      {c.fileUrl ? (
-                        <a
-                          className="underline"
-                          href={c.fileUrl}
-                          target="_blank"
-                          rel="noreferrer"
-                        >
-                          فتح الملف
-                        </a>
-                      ) : null}
-                    </div>
-                  </div>
-
-                  <RoleGate min="hr" fallback={null}>
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => removeCertificate(c.id)}
-                    >
-                      حذف
-                    </Button>
-                  </RoleGate>
-                </div>
-              ))}
-            </div>
-          </CardContent>
-        </Card>
-      </div>
-
-      <Separator />
-
-      {/* التقييمات */}
-      <div className="grid gap-3">
-        <div className="flex items-center justify-between">
-          <h2 className="text-lg font-bold">التقييمات</h2>
-
-          <RoleGate min="hr" fallback={null}>
-            <form
-              id="eval-form"
-              className="flex flex-wrap items-end gap-2"
-              action={(fd) => startTransition(() => addEvaluation(fd))}
-            >
-              <div>
-                <Label className="text-xs">السنة</Label>
-                <Input name="year" type="number" placeholder="2025" />
-              </div>
-              <div>
-                <Label className="text-xs">الدرجة (اختياري)</Label>
-                <Input name="score" type="number" step="0.1" placeholder="90" />
-              </div>
-              <div>
-                <Label className="text-xs">ملاحظات (اختياري)</Label>
-                <Input name="notes" placeholder="..." />
-              </div>
-              <Button type="submit" disabled={pending}>
-                إضافة
-              </Button>
-            </form>
-          </RoleGate>
-        </div>
-
-        <Card>
-          <CardContent className="p-0">
-            <div className="divide-y">
-              {evals.length === 0 && (
-                <div className="p-4 text-sm text-muted-foreground">
-                  لا توجد تقييمات
-                </div>
-              )}
-              {evals.map((e) => (
-                <div
-                  key={e.id}
-                  className="p-4 flex items-center justify-between gap-3"
-                >
-                  <div className="min-w-0">
-                    <div className="font-medium">سنة {e.year ?? "—"}</div>
-                    <div className="text-xs text-muted-foreground">
-                      {typeof e.score === "number" ? `الدرجة: ${e.score}` : "—"}{" "}
-                      {e.notes ? `• ${e.notes}` : ""}
-                    </div>
-                  </div>
-
-                  <RoleGate min="hr" fallback={null}>
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => removeEvaluation(e.id)}
-                    >
-                      حذف
-                    </Button>
-                  </RoleGate>
-                </div>
-              ))}
-            </div>
-          </CardContent>
-        </Card>
-      </div>
     </div>
   );
 }
 
-function Info({
-  label,
-  value,
-  mono,
+// ======= صف تعميم =======
+function AnnRow({
+  ann,
+  myUid,
+  canDelete,
+  onDelete,
+  onToggleRead,
 }: {
-  label: string;
-  value?: string;
-  mono?: boolean;
+  ann: Ann;
+  myUid: string;
+  canDelete: boolean;
+  onDelete: () => void;
+  onToggleRead: () => void;
 }) {
+  const [isRead, setIsRead] = useState<boolean | null>(null);
+
+  useEffect(() => {
+    let mounted = true;
+    (async () => {
+      try {
+        const rdSnap = await getDoc(
+          doc(db, "announcements", ann.id, "reads", myUid)
+        );
+        if (mounted) setIsRead(rdSnap.exists());
+      } catch {
+        if (mounted) setIsRead(false);
+      }
+    })();
+    return () => {
+      mounted = false;
+    };
+  }, [ann.id, myUid]);
+
   return (
-    <div className="min-w-0">
-      <div className="text-xs text-muted-foreground">{label}</div>
-      <div className={`truncate ${mono ? "font-mono text-sm" : "font-medium"}`}>
-        {value || "—"}
+    <div className="p-4 flex items-start justify-between gap-3">
+      <div className="min-w-0">
+        <div className="flex items-center gap-2">
+          <div className="font-semibold truncate">{ann.title}</div>
+          {isRead ? (
+            <span className="text-xs rounded bg-green-100 text-green-700 px-2 py-0.5">
+              مقروء
+            </span>
+          ) : (
+            <span className="text-xs rounded bg-gray-100 text-gray-700 px-2 py-0.5">
+              غير مقروء
+            </span>
+          )}
+        </div>
+        {ann.content ? (
+          <div className="text-sm text-muted-foreground mt-1 whitespace-pre-wrap">
+            {ann.content}
+          </div>
+        ) : null}
+        {ann.createdAt?.toDate && (
+          <div className="text-xs text-muted-foreground mt-1">
+            {ann.createdAt.toDate().toLocaleString("ar-SA")}
+          </div>
+        )}
+        {/* عرض مختصر للجمهور */}
+        <div className="text-xs text-muted-foreground mt-1 break-words">
+          {renderAudienceHint(ann.audTokens)}
+        </div>
+      </div>
+
+      <div className="flex items-center gap-2 shrink-0">
+        <Button
+          variant="secondary"
+          size="sm"
+          onClick={() => {
+            onToggleRead();
+            setIsRead((v) => !v);
+          }}
+        >
+          {isRead ? "علّم كغير مقروء" : "علّم كمقروء"}
+        </Button>
+        {canDelete && (
+          <Button variant="destructive" size="sm" onClick={onDelete}>
+            حذف
+          </Button>
+        )}
       </div>
     </div>
   );
 }
 
-function formatDate(d: any) {
-  try {
-    if (!d) return "—";
-    const dt = typeof d?.toDate === "function" ? d.toDate() : new Date(d);
-    if (isNaN(dt as any)) return "—";
-    return dt.toLocaleDateString("ar-SA", {
-      year: "numeric",
-      month: "short",
-      day: "2-digit",
-    });
-  } catch {
-    return "—";
-  }
+// ======= أدوات مساعدة =======
+function parseTags(s: string): string[] {
+  // "teachers; staff ;  , ;  " => ["teachers","staff"]
+  const raw = s
+    .replace(/,/g, ";")
+    .split(";")
+    .map((x) => x.trim())
+    .filter(Boolean);
+  return Array.from(new Set(raw));
+}
+
+function buildAudienceTokens({
+  all,
+  schools,
+  units,
+  roles,
+  tags,
+}: {
+  all: boolean;
+  schools: string[];
+  units: string[];
+  roles: string[];
+  tags: string[];
+}) {
+  if (all) return ["all:all"];
+
+  const tokens: string[] = [];
+
+  for (const sk of schools) tokens.push(`schoolKey:${sk}`);
+  for (const u of units) tokens.push(`unit:${u}`);
+  for (const r of roles) tokens.push(`role:${r}`);
+  for (const t of tags) tokens.push(`tag:${t}`);
+
+  return Array.from(new Set(tokens));
 }
 
 function buildUserTokens(user: {
@@ -531,11 +549,134 @@ function buildUserTokens(user: {
   schoolType?: string | null;
   tags?: string[] | null;
 }) {
-  const tokens: string[] = ["all:all"];
+  const tokens: string[] = [];
+  tokens.push("all:all");
   if (user.unit) tokens.push(`unit:${user.unit}`);
   if (user.schoolKey) tokens.push(`schoolKey:${user.schoolKey}`);
   if (user.schoolType) tokens.push(`schoolType:${user.schoolType}`);
-  if (Array.isArray(user.tags))
+  if (Array.isArray(user.tags)) {
     for (const t of user.tags) if (t) tokens.push(`tag:${t}`);
+  }
   return Array.from(new Set(tokens));
+}
+
+function renderAudienceHint(audTokens: string[]) {
+  if (audTokens.includes("all:all")) return "موجّه إلى: الجميع";
+  const mapLabel = (tok: string) => {
+    if (tok.startsWith("schoolKey:")) {
+      const key = tok.split(":")[1];
+      const opt = SCHOOL_OPTIONS.find((s) => s.key === key);
+      return opt ? `مدرسة: ${opt.label}` : `مدرسة: ${key}`;
+    }
+    if (tok.startsWith("unit:")) return `وحدة: ${tok.split(":")[1]}`;
+    if (tok.startsWith("role:")) return `دور: ${tok.split(":")[1]}`;
+    if (tok.startsWith("tag:")) return `وسم: ${tok.split(":")[1]}`;
+    if (tok.startsWith("schoolType:")) return `نوع مدرسة: ${tok.split(":")[1]}`;
+    return tok;
+  };
+  const readable = audTokens.map(mapLabel).join(" • ");
+  return `موجّه إلى: ${readable}`;
+}
+
+// ======= إشعارات التعميمات (Fanout) =======
+
+async function resolveAudienceUserIds(audTokens: string[]): Promise<string[]> {
+  const uids = new Set<string>();
+
+  // لو التعميم للجميع: هات كل المستخدمين (ممكن تصفيهم بـ tag=staff لو حابب)
+  if (audTokens.includes("all:all")) {
+    const snap = await getDocs(collection(db, "users"));
+    snap.forEach((d) => {
+      uids.add(d.id);
+    });
+    return Array.from(uids);
+  }
+
+  const schools: string[] = [];
+  const units: string[] = [];
+  const roles: string[] = [];
+  const tags: string[] = [];
+  const schoolTypes: string[] = [];
+
+  for (const tok of audTokens) {
+    if (tok.startsWith("schoolKey:")) {
+      schools.push(tok.split(":")[1]);
+    } else if (tok.startsWith("unit:")) {
+      units.push(tok.split(":")[1]);
+    } else if (tok.startsWith("role:")) {
+      roles.push(tok.split(":")[1]);
+    } else if (tok.startsWith("tag:")) {
+      tags.push(tok.split(":")[1]);
+    } else if (tok.startsWith("schoolType:")) {
+      schoolTypes.push(tok.split(":")[1]);
+    }
+  }
+
+  const queries: Array<ReturnType<typeof getDocs>> = [];
+
+  for (const sk of schools) {
+    queries.push(
+      getDocs(query(collection(db, "users"), where("schoolKey", "==", sk)))
+    );
+  }
+  for (const u of units) {
+    queries.push(
+      getDocs(query(collection(db, "users"), where("unit", "==", u)))
+    );
+  }
+  for (const r of roles) {
+    queries.push(
+      getDocs(query(collection(db, "users"), where("role", "==", r)))
+    );
+  }
+  for (const t of tags) {
+    queries.push(
+      getDocs(
+        query(collection(db, "users"), where("tags", "array-contains", t))
+      )
+    );
+  }
+  for (const st of schoolTypes) {
+    queries.push(
+      getDocs(
+        query(collection(db, "users"), where("schoolType", "==", st))
+      )
+    );
+  }
+
+  const snaps = await Promise.all(queries);
+  snaps.forEach((snap) => {
+    snap.forEach((d) => {
+      uids.add(d.id);
+    });
+  });
+
+  return Array.from(uids);
+}
+
+async function fanoutAnnouncementNotifications(
+  title: string,
+  audTokens: string[],
+  annId: string
+) {
+  const userIds = await resolveAudienceUserIds(audTokens);
+  if (userIds.length === 0) return;
+
+  const createdAt = serverTimestamp();
+
+  for (const uid of userIds) {
+    try {
+      await addDoc(collection(db, "users", uid, "notifications"), {
+        title: "تعميم جديد",
+        body: title,
+        type: "announcement",
+        link: "/announcements",
+        createdAt,
+        read: false,
+        annId,
+      });
+    } catch (e) {
+      console.warn("failed to write notif for uid:", uid, e);
+    }
+  }
 }

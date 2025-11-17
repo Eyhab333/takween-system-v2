@@ -7,6 +7,7 @@ import Link from "next/link";
 import { db } from "@/lib/firebase";
 import {
   collection,
+  collectionGroup,
   getDocs,
   orderBy,
   query,
@@ -36,6 +37,12 @@ type Emp = {
   schoolType?: string;
 };
 type GroupSpec = { id: string; title: string; schoolKey: string };
+type Stats = {
+  totalEmployees: number
+  totalAnnouncements: number
+  totalCertificates: number
+}
+
 
 export default function DashboardPage() {
   const [loading, setLoading] = useState(true);
@@ -45,6 +52,14 @@ export default function DashboardPage() {
   const [manarBoys, setManarBoys] = useState<Emp[]>([]);
   const [manarGirls, setManarGirls] = useState<Emp[]>([]);
   const [kgGroups, setKgGroups] = useState<Record<string, Emp[]>>({});
+const [stats, setStats] = useState<Stats>({
+    totalEmployees: 0,
+    totalAnnouncements: 0,
+    totalCertificates: 0,
+  })
+  const [loadingStats, setLoadingStats] = useState(true)
+
+
 
   useEffect(() => {
     let cancelled = false;
@@ -130,22 +145,71 @@ export default function DashboardPage() {
     };
   }, []);
 
+
+useEffect(() => {
+    let cancelled = false
+
+    async function loadStats() {
+      try {
+        setLoadingStats(true)
+
+        // 1) إجمالي الموظفين: users الذين لديهم tag = "staff"
+        const employeesQ = query(
+          collection(db, "users"),
+          where("tags", "array-contains", "staff")
+        )
+        const employeesSnap = await getDocs(employeesQ)
+        const totalEmployees = employeesSnap.size
+
+        // 2) عدد التعميمات من collection "announcements"
+        const annsSnap = await getDocs(collection(db, "announcements"))
+        const totalAnnouncements = annsSnap.size
+
+        // 3) عدد الشهادات من كل الـ certificates (collectionGroup)
+        const certsSnap = await getDocs(
+          collectionGroup(db, "certificates")
+        )
+        const totalCertificates = certsSnap.size
+
+        if (!cancelled) {
+          setStats({
+            totalEmployees,
+            totalAnnouncements,
+            totalCertificates,
+          })
+        }
+      } catch (e) {
+        console.error("stats load error", e)
+      } finally {
+        if (!cancelled) setLoadingStats(false)
+      }
+    }
+
+    loadStats()
+    return () => {
+      cancelled = true
+    }
+  }, [])
+
+
+
+
   return (
     <HRGate>
       <div className="grid gap-6">
         {/* كروت إحصائية سريعة */}
         <div className="grid gap-4 md:grid-cols-3">
           <StatCard
-            title="عدد الموظفين الإجمالي "
-            value={loading ? "…" : council.length}
+            title="إجمالي الموظفين"
+          value={loadingStats ? "…" : stats.totalEmployees}
           />
           <StatCard
-            title="عدد التعميمات "
-            value={loading ? "…" : executive.length}
+            title="عدد التعميمات"
+          value={loadingStats ? "…" : stats.totalAnnouncements}
           />
           <StatCard
-            title="عدد الشهادات "
-            value={loading ? "…" : supervision.length}
+            title="عدد الشهادات الصادرة"
+          value={loadingStats ? "…" : stats.totalCertificates}
           />
         </div>
 
@@ -301,11 +365,11 @@ function StatCard({ title, value }: { title: string; value: string | number }) {
       <CardContent className="flex items-end justify-between">
         <div>
           <div className="text-3xl font-bold">{value}</div>
-          <p className="text-sm text-muted-foreground">—</p>
+          {/* <p className="text-sm text-muted-foreground">—</p> */}
         </div>
-        <Button asChild variant="outline">
+        {/* <Button asChild variant="outline">
           <Link href="/employees">قائمة الموظفين</Link>
-        </Button>
+        </Button> */}
       </CardContent>
     </Card>
   );
