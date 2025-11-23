@@ -246,71 +246,74 @@ export default function EmployeeProfilePage() {
   // ========== عمليات HR+ ==========
 
   async function addCertificate(form: FormData) {
-    await auth.currentUser?.getIdToken(true);
+  await auth.currentUser?.getIdToken(true);
 
-    const title = (form.get("title") as string)?.trim();
-    const date = (form.get("date") as string)?.trim();
-    const file = form.get("file") as File | null;
+  const title = (form.get("title") as string)?.trim();
+  const date = (form.get("date") as string)?.trim();
+  const file = form.get("file") as File | null;
 
-    if (!title) {
-      toast.error("العنوان مطلوب");
+  if (!title) {
+    toast.error("العنوان مطلوب");
+    return;
+  }
+
+  let fileUrl = "";
+  try {
+    if (file && file.size > 0) {
+      const safeName = file.name.replace(/\s+/g, "_");
+      const path = `certificates/${targetUid}/${Date.now()}__${safeName}`;
+      const storageRef = ref(storage, path);
+      await uploadBytes(storageRef, file);
+      fileUrl = await getDownloadURL(storageRef);
+    }
+
+    // ✅ هات التوكن
+    const token = await auth.currentUser?.getIdToken();
+    if (!token) {
+      toast.error("لم يتم العثور على توكن تسجيل الدخول");
       return;
     }
 
-    let fileUrl = "";
-    try {
-      if (file && file.size > 0) {
-        try {
-          const safeName = file.name.replace(/\s+/g, "_");
-          const path = `certificates/${targetUid}/${Date.now()}__${safeName}`;
-          const storageRef = ref(storage, path);
-          await uploadBytes(storageRef, file);
-          fileUrl = await getDownloadURL(storageRef);
-        } catch (err) {
-          console.warn("Storage upload skipped:", err);
-        }
-      }
-
-      const payload = {
+    // ✅ نادى الـ API اللي بيكتب الشهادة + الإشعار
+    const res = await fetch("/api/add-certificate", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${token}`,
+      },
+      body: JSON.stringify({
+        targetUid,
         title,
         fileUrl,
         date: date || null,
-        createdAt: serverTimestamp(),
-        employeeId: targetUid,
         employeeName: user?.name || null,
         employeeDepartment: user?.department || null,
         employeePosition: user?.position || null,
         employeeEmail: user?.email || null,
-      };
+      }),
+    });
 
-      const refDoc = await addDoc(
-        collection(db, "users", targetUid, "certificates"),
-        payload
-      );
-
-      setCerts((prev) => [{ id: refDoc.id, title, fileUrl, date }, ...prev]);
-
-      // إشعار بالشهادة
-      try {
-        await addDoc(collection(db, "users", targetUid, "notifications"), {
-          title: "تمت إضافة شهادة جديدة",
-          body: title,
-          type: "certificate",
-          link: `/employees/${targetUid}#certificates`,
-          createdAt: serverTimestamp(),
-          read: false,
-        });
-      } catch (e) {
-        console.warn("addCertificate notification error:", e);
-      }
-
-      toast.success("تمت إضافة الشهادة");
-      (document.getElementById("cert-form") as HTMLFormElement)?.reset();
-    } catch (e: any) {
-      console.error("addCertificate error:", e?.code, e?.message);
-      toast.error(`فشل الإضافة: ${e?.code || "unknown"}`);
+    const data = await res.json();
+    if (!res.ok) {
+      console.error("add-certificate failed:", data);
+      toast.error(data?.error || "فشل إضافة الشهادة");
+      return;
     }
+
+    // ✅ UI update بعد نجاح السيرفر
+    setCerts((prev) => [
+      { id: data.certId, title, fileUrl, date },
+      ...prev,
+    ]);
+
+    toast.success("تمت إضافة الشهادة + إرسال إشعار");
+    (document.getElementById("cert-form") as HTMLFormElement)?.reset();
+  } catch (e: any) {
+    console.error("addCertificate error:", e);
+    toast.error("فشل الإضافة");
   }
+}
+
 
   async function removeCertificate(id: string) {
     try {
