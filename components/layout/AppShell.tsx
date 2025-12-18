@@ -15,8 +15,9 @@ type NavItem = { label: string; href: string; minRole: Role };
 const NAV_ITEMS: NavItem[] = [
   { label: "ملفي", href: "/me", minRole: "employee" },
   { label: "لوحة التحكم", href: "/dashboard", minRole: "hr" },
-  { label: "الشهادات", href: "/certificates", minRole: "hr" },
-  { label: "التعميمات", href: "/announcements", minRole: "hr" },
+  { label: "الطلبات", href: "/internal-requests", minRole: "employee" }, 
+  // { label: "الشهادات", href: "/certificates", minRole: "hr" },
+  // { label: "التعميمات", href: "/announcements", minRole: "hr" },
 ];
 
 export default function AppShell({ children }: { children: React.ReactNode }) {
