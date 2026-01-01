@@ -10,6 +10,7 @@ export default function Home() {
   const router = useRouter();
 
   useEffect(() => {
+    console.log("API KEY exists?", !!process.env.NEXT_PUBLIC_FIREBASE_API_KEY);
     const unsub = onAuthStateChanged(auth, (user) => {
       if (user) {
         router.replace("/dashboard");
@@ -25,6 +26,8 @@ export default function Home() {
   return (
     <main className="min-h-screen grid place-items-center text-sm text-muted-foreground">
       جارٍ التحقق من تسجيل الدخول...
+      
+
     </main>
   );
 }
