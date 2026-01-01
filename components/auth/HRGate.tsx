@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation"
 import { useEffect } from "react"
 import useClaimsRole from "@/hooks/use-claims-role" // نفس الهوك اللي بنقرأ منه الدور
 
-const HR_ROLES = ["hr","chairman","ceo","admin","superadmin"] as const
+const HR_ROLES = ["hr","chairman","ceo","admin","superadmin", "employee"] as const
 
 export default function HRGate({ children }: { children: React.ReactNode }) {
   const router = useRouter()

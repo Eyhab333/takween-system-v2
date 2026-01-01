@@ -6,7 +6,7 @@ import { useRouter, usePathname } from "next/navigation"
 import useClaimsRole from "@/hooks/use-claims-role"
 import AppShell from "@/components/layout/AppShell"
 
-const HR_ROLES = ["hr","chairman","ceo","admin","superadmin"] as const
+const HR_ROLES = ["hr","chairman","ceo","admin","superadmin", "employee"] as const
 
 export default function DashboardLayout({ children }: { children: React.ReactNode }) {
   const router = useRouter()

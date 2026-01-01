@@ -47,7 +47,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
   const router = useRouter();
   const [mobileOpen, setMobileOpen] = useState(false);
 
-  const isHrOrAbove = hasRoleAtLeast(role, "hr");
+  const isHrOrAbove = hasRoleAtLeast(role, "employee");
   //const isAnnouncementsPath = pathname?.startsWith("/announcements");
   // ❗ تعريف المسارات الممنوعة على الموظف العادي فقط
   const isForbiddenHrPathForNonHr = (() => {
