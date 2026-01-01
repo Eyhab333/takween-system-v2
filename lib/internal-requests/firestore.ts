@@ -474,6 +474,10 @@ export async function performRequestAction(input: PerformRequestActionInput) {
   // استنتاج الحالة الجديدة
   let status: RequestStatus = (data.status as RequestStatus) ?? "open"
 
+const terminalStatuses: RequestStatus[] = ["approved", "rejected", "closed", "cancelled"];
+const shouldArchive = terminalStatuses.includes(status);
+
+
   if (input.newStatus) {
     status = input.newStatus
   } else {
@@ -532,12 +536,12 @@ export async function performRequestAction(input: PerformRequestActionInput) {
 
   await updateDoc(ref, {
     status,
-    archived,
     currentAssignee,
     currentAssigneeKey,
     currentAssigneeLabel,
     actions: updatedActions,
     updatedAt: serverTimestamp(),
+    archived: shouldArchive ? true : (data.archived ?? false),
   })
 }
 

@@ -647,7 +647,7 @@ const req = request;
               type="button"
               variant="outline"
               size="sm"
-              onClick={() => window.open(`/requests/${req.id}/print`, "_blank")}
+              onClick={() => window.open(`/requests/${req.id}/print`, "_blank", "noopener,noreferrer")}
             >
               طباعة / PDF
             </Button>

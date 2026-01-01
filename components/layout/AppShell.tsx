@@ -57,7 +57,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
     if (isHrOrAbove) return false;
 
     // لوحة التحكم
-    if (pathname.startsWith("/dashboard")) return true;
+    //if (pathname.startsWith("/dashboard")) return true;
 
     // صفحة قائمة الموظفين العامة
     if (pathname === "/certificates") return true;
