@@ -292,12 +292,12 @@ try {
 
   return (
     <div className="grid gap-6">
-      <Card>
+      {/* <Card>
         <CardHeader>
           <CardTitle>انشاء تعميم</CardTitle>
         </CardHeader>
         <CardContent className="grid gap-6">
-          {/* نموذج الإضافة — HR+ فقط */}
+          
           {isHrOrAbove && (
             <form
               id="ann-form"
@@ -317,7 +317,6 @@ try {
 
               <Separator />
 
-              {/* اختيار الجمهور */}
               <div className="grid gap-2">
                 <div className="font-semibold">الجمهور المستهدف</div>
 
@@ -327,7 +326,7 @@ try {
                 </label>
 
                 <div className="grid md:grid-cols-3 gap-4">
-                  {/* المدارس */}
+               
                   <div className="border rounded p-3">
                     <div className="text-sm font-medium mb-2">المدارس</div>
                     <div className="grid gap-2">
@@ -347,7 +346,7 @@ try {
                     </div>
                   </div>
 
-                  {/* الوحدات */}
+          
                   <div className="border rounded p-3">
                     <div className="text-sm font-medium mb-2">الوحدات</div>
                     <div className="grid gap-2">
@@ -367,7 +366,6 @@ try {
                     </div>
                   </div>
 
-                  {/* الأدوار */}
                   <div className="border rounded p-3">
                     <div className="text-sm font-medium mb-2">الأدوار</div>
                     <div className="grid gap-2">
@@ -384,7 +382,7 @@ try {
                   </div>
                 </div>
 
-                {/* الوسوم الحرة */}
+              
                 <div className="grid gap-2">
                   <Label className="text-xs">
                     وسوم إضافية (اختياري) — افصل بـ ;
@@ -434,7 +432,7 @@ try {
             </div>
           )}
 
-          {/* القائمة */}
+      
           <div className="rounded-md border">
             {anns.length === 0 ? (
               <div className="p-4 text-sm text-muted-foreground">
@@ -456,7 +454,7 @@ try {
             )}
           </div>
         </CardContent>
-      </Card>
+      </Card> */}
     </div>
   );
 }

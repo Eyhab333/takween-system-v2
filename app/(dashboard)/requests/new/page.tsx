@@ -507,10 +507,19 @@ export default function NewRequestPage() {
               <Label className="text-xs">وصف الطلب</Label>
               <Textarea
                 rows={5}
-                placeholder="اكتب التفاصيل، الخلفية، المطلوب من الجهة المستقبِلة ..."
+                placeholder={`المكرم /  مثال:الإدارة المالية                سلمه الله
+السلام عليكم ورحمة الله وبركاته وبعد:
+
+نص الخطاب...
+
+وتفضلوا بقبول فائق الاحترام،،،
+والسلام عليكم ورحمة الله وبركاته،،،
+
+`}
                 value={description}
                 onChange={(e) => setDescription(e.target.value)}
               />
+
             </div>
 
             {/* المرفقات */}
