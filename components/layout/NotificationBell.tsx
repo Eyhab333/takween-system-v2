@@ -168,7 +168,7 @@ export function NotificationBell() {
             className="px-0 h-auto text-xs"
           >
             <Link href={uid ? `/employees/${uid}` : "/me"}>
-              عرض في ملف الموظف
+                 
             </Link>
           </Button>
         </div>
