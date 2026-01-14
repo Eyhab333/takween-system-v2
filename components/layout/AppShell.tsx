@@ -17,7 +17,7 @@ import {
   SheetTitle,
   SheetTrigger,
 } from "@/components/ui/sheet";
-
+import Image from "next/image"
 
 
 type NavItem = { label: string; href: string; minRole: Role };
@@ -173,7 +173,25 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
 
                     {/* Header داخل الـ Drawer */}
                     <div className="flex items-center justify-between border-b px-4 h-14">
-                      <div className="font-bold">Takween</div>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setMobileOpen(false);
+                          router.push("/dashboard");
+                        }}
+                        className="inline-flex items-center"
+                        aria-label="الذهاب للوحة الرئيسية"
+                      >
+                        <Image
+                          src="/logo.png"
+                          alt="Takween"
+                          width={110}
+                          height={30}
+                          priority
+                          className="h-15 w-auto object-contain"
+                        />
+                      </button>
+
                       {/* <Button
                         variant="ghost"
                         size="icon"
@@ -184,7 +202,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
                       </Button> */}
                     </div>
 
-                    
+
                     <div className="p-4 space-y-2">
                       {items.map((it) => {
                         const targetHref =
@@ -225,16 +243,37 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
               </div>
 
               {/* Logo */}
-              <div className="font-bold">
-                <span className="hidden md:inline">Takween</span>
+              <div className="flex items-center">
+                {/* Desktop */}
+                <Link href="/dashboard" className="hidden md:flex items-center">
+                  <Image
+                    src="/logo.png"
+                    alt="Takween"
+                    width={110}
+                    height={30}
+                    priority
+                    className="h-15 w-auto object-contain"
+                  />
+                </Link>
+
+                {/* Mobile */}
                 <button
                   type="button"
-                  className="md:hidden"
+                  className="md:hidden inline-flex items-center"
                   onClick={() => router.push("/dashboard")}
+                  aria-label="الذهاب للوحة الرئيسية"
                 >
-                  Takween
+                  <Image
+                    src="/logo.png"
+                    alt="Takween"
+                    width={110}
+                    height={30}
+                    priority
+                    className="h-14 w-auto object-contain"
+                  />
                 </button>
               </div>
+
             </div>
 
             {/* Right: actions */}
