@@ -1,6 +1,7 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 "use client";
 
+import Image from "next/image";
 import { useForm } from "react-hook-form";
 import { z } from "zod";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -34,6 +35,7 @@ export default function LoginPage() {
     resolver: zodResolver(schema),
     defaultValues: { remember: true },
   });
+
   const router = useRouter();
   const [show, setShow] = useState(false);
 
@@ -49,13 +51,10 @@ export default function LoginPage() {
       const token = await auth.currentUser!.getIdTokenResult(true);
       const role = token.claims?.role as string | undefined;
       const uid = auth.currentUser!.uid;
-      const isHrOrAbove = [
-        "hr",
-        "chairman",
-        "ceo",
-        "admin",
-        "superadmin",
-      ].includes(role || "");
+
+      const isHrOrAbove = ["hr", "chairman", "ceo", "admin", "superadmin"].includes(
+        role || ""
+      );
 
       if (isHrOrAbove) {
         router.replace("/dashboard");
@@ -82,6 +81,18 @@ export default function LoginPage() {
         onSubmit={handleSubmit(onSubmit)}
         className="w-full max-w-sm space-y-4 border rounded-lg p-6"
       >
+        {/* Logo */}
+        <div className="flex justify-center">
+          <Image
+            src="/logo.png"
+            alt="Takween"
+            width={180}
+            height={90}
+            priority
+            className="h-15 w-auto object-contain"
+          />
+        </div>
+
         <h1 className="text-xl font-bold text-center">تسجيل الدخول</h1>
 
         <div className="space-y-1">
@@ -102,12 +113,9 @@ export default function LoginPage() {
               aria-label={show ? "إخفاء كلمة المرور" : "إظهار كلمة المرور"}
               tabIndex={-1}
             >
-              {show ? (
-                <EyeOff className="h-5 w-5" />
-              ) : (
-                <Eye className="h-5 w-5" />
-              )}
+              {show ? <EyeOff className="h-5 w-5" /> : <Eye className="h-5 w-5" />}
             </button>
+
             <Input
               type={show ? "text" : "password"}
               dir="ltr"
@@ -115,6 +123,7 @@ export default function LoginPage() {
               {...register("password")}
             />
           </div>
+
           {errors.password && (
             <p className="text-sm text-destructive">
               {errors.password.message}
@@ -123,11 +132,7 @@ export default function LoginPage() {
         </div>
 
         <label className="inline-flex items-center gap-2 text-sm">
-          <input
-            type="checkbox"
-            className="h-4 w-4"
-            {...register("remember")}
-          />
+          <input type="checkbox" className="h-4 w-4" {...register("remember")} />
           تذكّرني
         </label>
 
