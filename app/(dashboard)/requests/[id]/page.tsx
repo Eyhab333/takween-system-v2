@@ -267,7 +267,7 @@ const req = request;
     const exclude = new Set<string>();
     if (myRecipientKey) exclude.add(myRecipientKey);
     if (req.currentAssigneeKey) exclude.add(req.currentAssigneeKey);
-    if (req.mainRecipientKey) exclude.add(req.mainRecipientKey);
+    //if (req.mainRecipientKey) exclude.add(req.mainRecipientKey); // ممكن أحيل حتى لو هو الجهة الأساسية، لأن ممكن الجهة الأساسية مش مسؤولة حالياً
     return RECIPIENTS.filter((r) => !exclude.has(r.key));
   })();
 
