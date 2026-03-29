@@ -5,6 +5,8 @@ export const dynamic = "force-dynamic";
 import { NextRequest } from "next/server";
 import { Timestamp } from "firebase-admin/firestore";
 import { getAdminServices } from "@/lib/server/firebaseAdmin";
+import { getMessaging } from "firebase-admin/messaging";
+import { FieldValue } from "firebase-admin/firestore";
 
 const HR_ROLES = ["hr", "chairman", "ceo", "admin", "superadmin"] as const;
 
@@ -50,6 +52,20 @@ async function resolveUidsByRecipientKeys(keys: string[]) {
   }
 
   return Array.from(uids);
+}
+
+async function getTokensForUids(uids: string[]) {
+  const { db } = getAdminServices();
+  const all: { token: string; uid: string }[] = [];
+
+  for (const uid of uids) {
+    const snap = await db.collection("users").doc(uid).collection("fcmTokens").get();
+    snap.forEach((d) => {
+      const token = (d.data() as any)?.token || d.id; // انت مسمي docId=token
+      if (token) all.push({ token, uid });
+    });
+  }
+  return all;
 }
 
 export async function POST(req: NextRequest) {
@@ -110,6 +126,7 @@ export async function POST(req: NextRequest) {
     const batch = db.batch();
     for (const uid of targetUids) {
       const ref = db.collection("users").doc(uid).collection("notifications").doc();
+      const userRef = db.collection("users").doc(uid);
       batch.set(ref, {
         title,
         body: msg || "",
@@ -120,9 +137,49 @@ export async function POST(req: NextRequest) {
         read: false,
         requestId,
       });
+      batch.set(userRef, { unreadNotificationsCount: FieldValue.increment(1) }, { merge: true });
     }
 
     await batch.commit();
+    const tokenPairs = await getTokensForUids(targetUids);
+const tokens = tokenPairs.map((x) => x.token);
+
+if (tokens.length) {
+  const messaging = getMessaging();
+
+  const res = await messaging.sendEachForMulticast({
+    tokens,
+    notification: {
+      title,
+      body: msg || "",
+    },
+    data: {
+      link,              // مهم للـ SW
+      requestId,
+      type: "internal_request",
+    },
+    webpush: {
+      fcmOptions: { link }, // يساعد بعض المتصفحات
+      notification: {
+        icon: "https://YOUR_DOMAIN/icons/icon-192.png",
+      },
+    },
+  });
+
+  // تنظيف التوكنز المعطوبة
+  const { db } = getAdminServices();
+  const bad: Array<{ uid: string; token: string }> = [];
+  res.responses.forEach((r, i) => {
+    if (!r.success) {
+      const { uid, token } = tokenPairs[i];
+      bad.push({ uid, token });
+    }
+  });
+
+  for (const b of bad) {
+    await db.collection("users").doc(b.uid).collection("fcmTokens").doc(b.token).delete().catch(() => {});
+  }
+}
     return Response.json({ ok: true, sent: targetUids.length });
   } catch (e: any) {
     console.error("fanout-request error:", e);

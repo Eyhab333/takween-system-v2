@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { auth } from "@/lib/firebase";
+import type { RequestRecipientKey } from "@/lib/internal-requests/recipients";
 
 export type Role =
   | "employee"
@@ -11,35 +12,12 @@ export type Role =
   | "admin"
   | "superadmin";
 
-export type RecipientKey =
-  | "chairman"
-  | "ceo"
-  | "finance"
-  | "projects"
-  | "maintenance"
-  | "hr"
-  | "platforms"
-  | "collector"
-  | "secretary"
-  | "media_manager"
-  | "designer"
-  | "supervision_head"
-  | "executive_assistant"
-  | "admin_supervisor"
-  | "edu_supervisor"
-  | "athar_center"
-  | "binaa_center";
-
 type ClaimsState = {
   loading: boolean;
   uid: string | null;
   email: string | null;
-
-  // صلاحية عامة (HR/CEO...)
   role: Role | null;
-
-  // ✅ جهة المستخدم في نظام الطلبات (17 جهة)
-  requestRecipientKey: RecipientKey | null;
+  requestRecipientKey: RequestRecipientKey | null;
   requestRecipientLabel: string | null;
   requestRecipientNumber: number | null;
 };
@@ -71,14 +49,11 @@ export default function useClaimsRole(): ClaimsState {
       }
 
       try {
-        // اجبر تحديث التوكن عشان نقرأ الclaims الأحدث
         const token = await u.getIdTokenResult(true);
 
         const role = (token.claims?.role as Role | undefined) ?? null;
-
         const requestRecipientKey =
-          (token.claims?.requestRecipientKey as RecipientKey | undefined) ?? null;
-
+          (token.claims?.requestRecipientKey as RequestRecipientKey | undefined) ?? null;
         const requestRecipientLabel =
           (token.claims?.requestRecipientLabel as string | undefined) ?? null;
 

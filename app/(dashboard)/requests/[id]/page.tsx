@@ -1,6 +1,5 @@
-"use client";
-
 /* eslint-disable @typescript-eslint/no-explicit-any */
+"use client";
 
 import { useEffect, useRef, useState, useTransition } from "react";
 import { useParams, useRouter } from "next/navigation";
@@ -20,7 +19,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import MarkdownView from "@/components/ui/MarkdownView";
-import useClaimsRole, { Role as ClaimsRole, Role } from "@/hooks/use-claims-role";
+import useClaimsRole, { Role as ClaimsRole } from "@/hooks/use-claims-role";
 import {
   listenInternalRequestById,
   performRequestAction,
@@ -31,19 +30,24 @@ import type {
   RequestStatus,
 } from "@/lib/internal-requests/types";
 import {
-  RECIPIENTS,
   getRecipientByKey,
   getRecipientByEmail,
   type RequestRecipientKey,
 } from "@/lib/internal-requests/recipients";
+import {
+  canSendTo,
+  getVisibleRecipientsForSender,
+} from "@/lib/internal-requests/recipient-permissions";
 
-import { auth, db } from "@/lib/firebase";
-import { doc as fsDoc, getDoc as fsGetDoc } from "firebase/firestore";
-
-import { ref, uploadBytes, getDownloadURL } from "firebase/storage"
-import { arrayUnion, updateDoc, serverTimestamp } from "firebase/firestore"
-import { storage } from "@/lib/firebase"
-
+import { auth, db, storage } from "@/lib/firebase";
+import {
+  doc as fsDoc,
+  getDoc as fsGetDoc,
+  arrayUnion,
+  updateDoc,
+  serverTimestamp,
+} from "firebase/firestore";
+import { ref, uploadBytes, getDownloadURL } from "firebase/storage";
 
 type UserMini = {
   label: string;
@@ -53,11 +57,6 @@ type UserMini = {
 };
 
 const HR_PLUS: ClaimsRole[] = ["hr", "chairman", "ceo", "admin", "superadmin"];
-
-
-
-
-
 
 async function fanoutRequestNotification(payload: {
   requestId: string;
@@ -84,7 +83,7 @@ async function fanoutRequestNotification(payload: {
     try {
       const j = await res.json();
       msg = j?.error || msg;
-    } catch { }
+    } catch {}
     throw new Error(msg);
   }
 }
@@ -115,11 +114,14 @@ export default function RequestDetailsPage() {
   const [commentText, setCommentText] = useState("");
 
   const [forwardOpen, setForwardOpen] = useState(false);
-  const [forwardTargetKey, setForwardTargetKey] = useState<string>("");
+  const [forwardTargetKey, setForwardTargetKey] = useState<
+    RequestRecipientKey | ""
+  >("");
   const [forwardComment, setForwardComment] = useState("");
-  const fileInputRef = useRef<HTMLInputElement | null>(null)
-  const [uploadingAtt, setUploadingAtt] = useState(false)
-  // ===== subscribe request =====
+
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const [uploadingAtt, setUploadingAtt] = useState(false);
+
   useEffect(() => {
     if (!id) return;
 
@@ -131,7 +133,6 @@ export default function RequestDetailsPage() {
     return () => unsub();
   }, [id]);
 
-  // ===== load my recipientKey from custom claims (fallback by email) =====
   useEffect(() => {
     if (claimsLoading) return;
 
@@ -147,8 +148,9 @@ export default function RequestDetailsPage() {
 
         const token = await u.getIdTokenResult(true);
         const key =
-          (token.claims?.requestRecipientKey as RequestRecipientKey | undefined) ??
-          null;
+          (token.claims?.requestRecipientKey as
+            | RequestRecipientKey
+            | undefined) ?? null;
 
         if (!cancelled && key) {
           setMyRecipientKey(key);
@@ -172,7 +174,6 @@ export default function RequestDetailsPage() {
     };
   }, [claimsLoading, myEmail]);
 
-  // ===== build cache for actors (fromUid/toUid) to hide UID in UI =====
   useEffect(() => {
     if (!request) return;
 
@@ -207,7 +208,8 @@ export default function RequestDetailsPage() {
           const recipientLabel =
             (data.requestRecipientLabel as string | undefined) ?? null;
           const recipientKey =
-            (data.requestRecipientKey as RequestRecipientKey | undefined) ?? null;
+            (data.requestRecipientKey as RequestRecipientKey | undefined) ??
+            null;
 
           const name = (data.name as string | undefined) ?? "";
           const email = (data.email as string | undefined) ?? null;
@@ -229,7 +231,6 @@ export default function RequestDetailsPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [request?.id]);
 
-  // ===== loading states =====
   if (claimsLoading || !subscribed) {
     return (
       <div className="min-h-[40vh] grid place-items-center text-sm text-muted-foreground">
@@ -239,20 +240,18 @@ export default function RequestDetailsPage() {
   }
 
   if (!request) {
-  return (
-    <div className="min-h-[40vh] grid place-items-center text-sm text-muted-foreground">
-      لم يتم العثور على هذا الطلب أو قد تم حذفه.
-    </div>
-  );
-}
+    return (
+      <div className="min-h-[40vh] grid place-items-center text-sm text-muted-foreground">
+        لم يتم العثور على هذا الطلب أو قد تم حذفه.
+      </div>
+    );
+  }
 
-const req = request;
+  const req = request;
 
-
-  // ===== derived =====
   const status = req.status as RequestStatus;
   const isTerminal = ["approved", "rejected", "closed", "cancelled"].includes(
-    status
+    status,
   );
 
   const isOwner = !!myUid && myUid === req.createdByUid;
@@ -263,13 +262,10 @@ const req = request;
   const canCancel =
     !isTerminal && isOwner && ["open", "in_progress"].includes(status);
 
-  const forwardTargets = (() => {
-    const exclude = new Set<string>();
-    if (myRecipientKey) exclude.add(myRecipientKey);
-    if (req.currentAssigneeKey) exclude.add(req.currentAssigneeKey);
-    //if (req.mainRecipientKey) exclude.add(req.mainRecipientKey); // ممكن أحيل حتى لو هو الجهة الأساسية، لأن ممكن الجهة الأساسية مش مسؤولة حالياً
-    return RECIPIENTS.filter((r) => !exclude.has(r.key));
-  })();
+  const forwardTargets = getVisibleRecipientsForSender(myRecipientKey, [
+    myRecipientKey,
+    req.currentAssigneeKey,
+  ]);
 
   const requestNumberText =
     req.requestNumber ||
@@ -277,16 +273,22 @@ const req = request;
 
   const mainRecipientLabel =
     req.mainRecipientLabel ||
-    (req.mainRecipientKey ? getRecipientByKey(req.mainRecipientKey)?.label : null) ||
+    (req.mainRecipientKey
+      ? getRecipientByKey(req.mainRecipientKey)?.label
+      : null) ||
     "غير محددة";
 
   const currentAssigneeLabel =
     req.currentAssigneeLabel ||
-    (req.currentAssigneeKey ? getRecipientByKey(req.currentAssigneeKey)?.label : null) ||
+    (req.currentAssigneeKey
+      ? getRecipientByKey(req.currentAssigneeKey)?.label
+      : null) ||
     "—";
 
   const creatorLabel = (() => {
-    const byEmail = req.createdByEmail ? getRecipientByEmail(req.createdByEmail) : undefined;
+    const byEmail = req.createdByEmail
+      ? getRecipientByEmail(req.createdByEmail)
+      : undefined;
     if (byEmail) return byEmail.label;
 
     const c = userCache[req.createdByUid];
@@ -350,16 +352,15 @@ const req = request;
   }
 
   function getCreatorRecipientKey(): string | null {
-    // 1) لو محفوظ في الدوك
     const direct = (req as any)?.createdByRecipientKey as string | undefined;
     if (direct) return direct;
 
-    // 2) من كاش users
     const cached = userCache[req.createdByUid];
     if (cached?.recipientKey) return cached.recipientKey;
 
-    // 3) من الإيميل لو هو من الـ 17
-    const byEmail = req.createdByEmail ? getRecipientByEmail(req.createdByEmail) : null;
+    const byEmail = req.createdByEmail
+      ? getRecipientByEmail(req.createdByEmail)
+      : null;
     return byEmail?.key ?? null;
   }
 
@@ -378,12 +379,10 @@ const req = request;
 
     if (extra?.length) keys.push(...extra);
 
-    // unique + remove my key (عشان ما يجيش إشعار لنفسي)
     const uniq = Array.from(new Set(keys.filter(Boolean)));
     return myRecipientKey ? uniq.filter((k) => k !== myRecipientKey) : uniq;
   }
 
-  // ===== actions handlers (مع إشعارات) =====
   function doComment() {
     if (!myUid) return toast.error("سجّل الدخول مرة أخرى");
     const text = commentText.trim();
@@ -399,7 +398,6 @@ const req = request;
           comment: text,
         });
 
-        // إشعار: منشئ الطلب + الـ CC + (المسؤول الحالي لو مش هو نفس المعلّق)
         try {
           const toKeys = buildNotifKeys();
           if (toKeys.length) {
@@ -429,6 +427,10 @@ const req = request;
     if (!myUid) return toast.error("سجّل الدخول مرة أخرى");
     if (!forwardTargetKey) return toast.error("اختر الجهة المُحال إليها");
 
+    if (!canSendTo(myRecipientKey, forwardTargetKey as RequestRecipientKey)) {
+      return toast.error("لا يمكنك إحالة الطلب لهذه الجهة");
+    }
+
     startTransition(async () => {
       try {
         await performRequestAction({
@@ -436,13 +438,12 @@ const req = request;
           actionType: "forwarded",
           actorUid: myUid,
           actorRole: (myRole as any) ?? "employee",
-          targetRecipientKey: forwardTargetKey as any,
+          targetRecipientKey: forwardTargetKey as RequestRecipientKey,
           targetUid: null,
           targetRole: null,
           comment: forwardComment.trim(),
         });
 
-        // إشعار: الجهة الجديدة + المنشئ + CC
         try {
           const toKeys = buildNotifKeys([forwardTargetKey]);
           if (toKeys.length) {
@@ -482,7 +483,6 @@ const req = request;
           comment: "",
         });
 
-        // إشعار: المنشئ + CC
         try {
           const toKeys = buildNotifKeys();
           if (toKeys.length) {
@@ -531,7 +531,6 @@ const req = request;
           newStatus: "cancelled",
         });
 
-        // إشعار: الجهة الحالية + CC
         try {
           const toKeys = buildNotifKeys();
           if (toKeys.length) {
@@ -555,43 +554,41 @@ const req = request;
     });
   }
 
-
   function safeFileName(name: string) {
-    return name.replace(/[^\w.\-()\s]/g, "_").replace(/\s+/g, "_")
+    return name.replace(/[^\w.\-()\s]/g, "_").replace(/\s+/g, "_");
   }
-  //const HR_ROLES: Role[] = ["hr", "chairman", "ceo", "admin", "superadmin"];
-  //const { role } = useClaimsRole();
-  //const isHrOrAbove = role ? HR_ROLES.includes(role) : false;
-  
+
   async function uploadMoreAttachments(files: File[]) {
-    
+    if (!req?.id) return;
+    if (!myUid) return toast.error("سجّل الدخول مرة أخرى");
+    if (!files.length) return;
 
-    if (!req?.id) return
-    if (!myUid) return toast.error("سجّل الدخول مرة أخرى")
-    if (!files.length) return
-    
-    
-    // السماح بالرفع للـ owner أو الجهة الحالية (أو HR+ لو تحب)
-    const canUpload = !isTerminal && (isOwner || isAssignedToMe || (myRole && HR_PLUS.includes(myRole as any)))
+    const canUpload =
+      !isTerminal &&
+      (isOwner ||
+        isAssignedToMe ||
+        (myRole && HR_PLUS.includes(myRole as any)));
 
-    if (!canUpload) return toast.error("ليس لديك صلاحية رفع مرفقات لهذا الطلب")
+    if (!canUpload) {
+      return toast.error("ليس لديك صلاحية رفع مرفقات لهذا الطلب");
+    }
 
-    setUploadingAtt(true)
-    const tId = toast.loading("جارٍ رفع المرفقات...")
+    setUploadingAtt(true);
+    const tId = toast.loading("جارٍ رفع المرفقات...");
 
     try {
-      const uploaded: any[] = []
+      const uploaded: any[] = [];
 
       for (const f of files) {
-        const safe = safeFileName(f.name || "file")
-        const path = `internalRequests/${req.id}/attachments/${Date.now()}__${safe}`
-        const storageRef = ref(storage, path)
+        const safe = safeFileName(f.name || "file");
+        const path = `internalRequests/${req.id}/attachments/${Date.now()}__${safe}`;
+        const storageRef = ref(storage, path);
 
         await uploadBytes(storageRef, f, {
           contentType: f.type || "application/octet-stream",
-        })
+        });
 
-        const url = await getDownloadURL(storageRef)
+        const url = await getDownloadURL(storageRef);
 
         uploaded.push({
           name: f.name,
@@ -602,29 +599,30 @@ const req = request;
           uploadedByUid: myUid,
           uploadedByLabel: actorLabelByUid(myUid, myRole as any),
           uploadedAtMs: Date.now(),
-        })
+        });
       }
 
       await updateDoc(fsDoc(db, "internalRequests", req.id), {
         attachments: arrayUnion(...uploaded),
         updatedAt: serverTimestamp(),
-      })
+      });
 
-      toast.dismiss(tId)
-      toast.success("تم رفع المرفقات")
+      toast.dismiss(tId);
+      toast.success("تم رفع المرفقات");
     } catch (e: any) {
-      console.error(e)
-      toast.dismiss(tId)
-      toast.error(e?.message || "فشل رفع المرفقات")
+      console.error(e);
+      toast.dismiss(tId);
+      toast.error(e?.message || "فشل رفع المرفقات");
     } finally {
-      setUploadingAtt(false)
-      if (fileInputRef.current) fileInputRef.current.value = ""
+      setUploadingAtt(false);
+      if (fileInputRef.current) fileInputRef.current.value = "";
     }
   }
 
-
   const lastAction =
-    req.actions && req.actions.length > 0 ? req.actions[req.actions.length - 1] : null;
+    req.actions && req.actions.length > 0
+      ? req.actions[req.actions.length - 1]
+      : null;
 
   return (
     <div className="grid gap-6 max-w-4xl mx-auto">
@@ -635,9 +633,12 @@ const req = request;
               {req.title || "طلب بدون عنوان"}
             </CardTitle>
             <div className="text-xs text-muted-foreground mt-1">
-              رقم الطلب: <span className="font-medium">{requestNumberText}</span>
+              رقم الطلب:{" "}
+              <span className="font-medium">{requestNumberText}</span>
               {lastAction?.actionType ? (
-                <span className="mr-2">• آخر حركة: {actionLabel(lastAction.actionType as any)}</span>
+                <span className="mr-2">
+                  • آخر حركة: {actionLabel(lastAction.actionType as any)}
+                </span>
               ) : null}
             </div>
           </div>
@@ -647,7 +648,13 @@ const req = request;
               type="button"
               variant="outline"
               size="sm"
-              onClick={() => window.open(`/requests/${req.id}/print`, "_blank", "noopener,noreferrer")}
+              onClick={() =>
+                window.open(
+                  `/requests/${req.id}/print`,
+                  "_blank",
+                  "noopener,noreferrer",
+                )
+              }
             >
               طباعة / PDF
             </Button>
@@ -666,7 +673,6 @@ const req = request;
           </div>
         </CardHeader>
 
-
         <CardContent className="grid gap-3 text-sm">
           <div className="grid md:grid-cols-2 gap-3">
             <InfoRow label="الجهة الأساسية" value={mainRecipientLabel} />
@@ -674,17 +680,25 @@ const req = request;
 
             <InfoRow
               label="منشئ الطلب"
-              value={req.createdByEmail ? `${creatorLabel} — ${req.createdByEmail}` : creatorLabel}
+              value={
+                req.createdByEmail
+                  ? `${creatorLabel} — ${req.createdByEmail}`
+                  : creatorLabel
+              }
             />
 
             <InfoRow
               label="تاريخ الإنشاء"
-              value={req.createdAt ? req.createdAt.toLocaleString("ar-SA") : "—"}
+              value={
+                req.createdAt ? req.createdAt.toLocaleString("ar-SA") : "—"
+              }
             />
 
             <InfoRow
               label="آخر تحديث"
-              value={req.updatedAt ? req.updatedAt.toLocaleString("ar-SA") : "—"}
+              value={
+                req.updatedAt ? req.updatedAt.toLocaleString("ar-SA") : "—"
+              }
             />
           </div>
 
@@ -709,14 +723,17 @@ const req = request;
           ) : null}
 
           <div className="flex justify-end gap-2 mt-4">
-            <Button type="button" variant="outline" onClick={() => router.back()}>
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => router.back()}
+            >
               رجوع
             </Button>
           </div>
         </CardContent>
       </Card>
 
-      {/* الإجراءات */}
       <Card>
         <CardHeader>
           <CardTitle className="text-base">الإجراءات</CardTitle>
@@ -808,7 +825,11 @@ const req = request;
                     >
                       إغلاق
                     </Button>
-                    <Button type="button" onClick={doComment} disabled={pending}>
+                    <Button
+                      type="button"
+                      onClick={doComment}
+                      disabled={pending}
+                    >
                       {pending ? "جارٍ الإرسال..." : "إرسال التعليق"}
                     </Button>
                   </div>
@@ -821,7 +842,9 @@ const req = request;
                     <Label className="text-xs">الجهة المُحال إليها</Label>
                     <Select
                       value={forwardTargetKey}
-                      onValueChange={(v) => setForwardTargetKey(v)}
+                      onValueChange={(v) =>
+                        setForwardTargetKey(v as RequestRecipientKey)
+                      }
                     >
                       <SelectTrigger>
                         <SelectValue placeholder="اختر الجهة" />
@@ -837,7 +860,7 @@ const req = request;
 
                     {forwardTargets.length === 0 ? (
                       <div className="text-xs text-muted-foreground">
-                        لا توجد جهات متاحة للإحالة (بعد الاستبعاد).
+                        لا توجد جهات متاحة للإحالة.
                       </div>
                     ) : null}
                   </div>
@@ -859,7 +882,11 @@ const req = request;
                     >
                       إغلاق
                     </Button>
-                    <Button type="button" onClick={doForward} disabled={pending}>
+                    <Button
+                      type="button"
+                      onClick={doForward}
+                      disabled={pending}
+                    >
                       {pending ? "جارٍ الإرسال..." : "تنفيذ الإحالة"}
                     </Button>
                   </div>
@@ -867,26 +894,32 @@ const req = request;
               ) : null}
             </>
           ) : (
-            <div className="text-sm text-muted-foreground">لا توجد إجراءات متاحة لك على هذا الطلب.</div>
+            <div className="text-sm text-muted-foreground">
+              لا توجد إجراءات متاحة لك على هذا الطلب.
+            </div>
           )}
         </CardContent>
       </Card>
-      {/* المرفقات */}
+
       <Separator />
 
       <div className="grid gap-2">
         <div className="flex items-center justify-between gap-2">
           <div className="text-xs text-muted-foreground">المرفقات</div>
 
-          {/* زر رفع مرفق */}
-          {!isTerminal && (isOwner || isAssignedToMe) ? (
+          {!isTerminal &&
+          (isOwner ||
+            isAssignedToMe ||
+            (myRole && HR_PLUS.includes(myRole as any))) ? (
             <>
               <input
                 ref={fileInputRef}
                 type="file"
                 multiple
                 className="hidden"
-                onChange={(e) => uploadMoreAttachments(Array.from(e.target.files || []))}
+                onChange={(e) =>
+                  uploadMoreAttachments(Array.from(e.target.files || []))
+                }
               />
               <Button
                 type="button"
@@ -901,18 +934,25 @@ const req = request;
           ) : null}
         </div>
 
-        {(!req.attachments || req.attachments.length === 0) ? (
+        {!req.attachments || req.attachments.length === 0 ? (
           <div className="text-sm text-muted-foreground">لا توجد مرفقات.</div>
         ) : (
           <div className="grid gap-2">
             {req.attachments.map((a, idx) => (
-              <div key={idx} className="rounded-md border p-3 flex items-start justify-between gap-3">
+              <div
+                key={idx}
+                className="rounded-md border p-3 flex items-start justify-between gap-3"
+              >
                 <div className="min-w-0">
                   <div className="font-medium text-sm truncate">{a.name}</div>
                   <div className="text-xs text-muted-foreground mt-1">
                     {(a.size / 1024).toFixed(0)} KB
-                    {a.uploadedByLabel ? <> • رُفع بواسطة: {a.uploadedByLabel}</> : null}
-                    {a.uploadedAtMs ? <> • {new Date(a.uploadedAtMs).toLocaleString("ar-SA")}</> : null}
+                    {a.uploadedByLabel ? (
+                      <> • رُفع بواسطة: {a.uploadedByLabel}</>
+                    ) : null}
+                    {a.uploadedAtMs ? (
+                      <> • {new Date(a.uploadedAtMs).toLocaleString("ar-SA")}</>
+                    ) : null}
                   </div>
                 </div>
 
@@ -932,10 +972,11 @@ const req = request;
         )}
       </div>
 
-      {/* خط سير الطلب */}
       <Card>
         <CardHeader>
-          <CardTitle className="text-base">خط سير الطلب (الإحالات والحركات)</CardTitle>
+          <CardTitle className="text-base">
+            خط سير الطلب (الإحالات والحركات)
+          </CardTitle>
         </CardHeader>
         <CardContent>
           {(!req.actions || req.actions.length === 0) && (
@@ -952,13 +993,15 @@ const req = request;
                     ? creatorLabel
                     : actorLabelByUid(a.fromUid, a.fromRole as any);
 
-                const toText =
-                  (a as any).toRecipientKey
-                    ? recipientLabelByKey((a as any).toRecipientKey)
-                    : actorLabelByUid(a.toUid, a.toRole as any);
+                const toText = (a as any).toRecipientKey
+                  ? recipientLabelByKey((a as any).toRecipientKey)
+                  : actorLabelByUid(a.toUid, a.toRole as any);
 
                 return (
-                  <div key={idx} className="relative pl-4 border-r pr-2 border-dashed">
+                  <div
+                    key={idx}
+                    className="relative pl-4 border-r pr-2 border-dashed"
+                  >
                     <div className="absolute -right-[6px] top-1 w-3 h-3 rounded-full bg-primary/80" />
                     <div className="flex items-center justify-between gap-2">
                       <div className="font-medium text-sm">
@@ -994,7 +1037,9 @@ function InfoRow({ label, value }: { label: string; value?: string | null }) {
   return (
     <div className="min-w-0">
       <div className="text-xs text-muted-foreground">{label}</div>
-      <div className="text-sm font-medium break-words">{value && value !== "" ? value : "—"}</div>
+      <div className="text-sm font-medium break-words">
+        {value && value !== "" ? value : "—"}
+      </div>
     </div>
   );
 }

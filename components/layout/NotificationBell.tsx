@@ -4,7 +4,11 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { Bell } from "lucide-react";
-import { db } from "@/lib/firebase";
+import { toast } from "sonner";
+
+import useClaimsRole from "@/hooks/use-claims-role";
+import { app, db } from "@/lib/firebase";
+
 import {
   collection,
   doc,
@@ -13,15 +17,13 @@ import {
   orderBy,
   limit,
   setDoc,
+  where,
 } from "firebase/firestore";
-import useClaimsRole from "@/hooks/use-claims-role";
-import {
-  Popover,
-  PopoverContent,
-  PopoverTrigger,
-} from "@/components/ui/popover";
+
+import { getMessaging, isSupported, onMessage } from "firebase/messaging";
+
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Button } from "@/components/ui/button";
-import { toast } from "sonner";
 
 type NotificationItem = {
   id: string;
@@ -30,7 +32,7 @@ type NotificationItem = {
   type?: string;
   link?: string;
   createdAt?: any;
-  createdAtMs?: number; // ✅ جديد
+  createdAtMs?: number;
   read?: boolean;
 };
 
@@ -40,34 +42,98 @@ export function NotificationBell() {
   const [unreadCount, setUnreadCount] = useState(0);
   const router = useRouter();
 
-  // لو لسه ماعرفناش المستخدم، ما نعرضش حاجة
+  // 1) آخر 10 إشعارات للعرض
   useEffect(() => {
     if (loading || !uid) return;
 
-    const q = query(
+    const qLast = query(
       collection(db, "users", uid, "notifications"),
-      orderBy("createdAtMs", "desc"), // ✅ ترتيب ثابت وسريع
+      orderBy("createdAtMs", "desc"),
       limit(10)
     );
 
     const unsub = onSnapshot(
-      q,
+      qLast,
       (snap) => {
         const list: NotificationItem[] = snap.docs.map((d) => ({
           id: d.id,
           ...(d.data() as any),
         }));
         setNotifs(list);
-        setUnreadCount(list.filter((n) => !n.read).length);
       },
       (err) => {
-        console.error("notifications listener error:", err);
+        console.error("notifications(last10) listener error:", err);
         toast.error("تعذر تحميل الإشعارات");
       }
     );
 
     return () => unsub();
   }, [loading, uid]);
+
+  // 2) عدّاد غير المقروء (بدون limit)
+  useEffect(() => {
+    if (loading || !uid) return;
+
+    const qUnread = query(
+      collection(db, "users", uid, "notifications"),
+      where("read", "==", false)
+    );
+
+    const unsub = onSnapshot(
+      qUnread,
+      (snap) => {
+        setUnreadCount(snap.size);
+      },
+      (err) => {
+        console.error("notifications(unread) listener error:", err);
+      }
+    );
+
+    return () => unsub();
+  }, [loading, uid]);
+
+  // 3) Toast عند وصول FCM والصفحة مفتوحة (Foreground)
+  useEffect(() => {
+    if (loading || !uid) return;
+
+    let unsub: undefined | (() => void);
+
+    (async () => {
+      const ok = await isSupported();
+      if (!ok) return;
+
+      const messaging = getMessaging(app);
+      unsub = onMessage(messaging, (payload) => {
+        const title = payload?.notification?.title || "إشعار جديد";
+        const body = payload?.notification?.body || "";
+        const link = (payload as any)?.data?.link as string | undefined;
+
+        toast(title, {
+          description: body,
+          action: link ? { label: "فتح", onClick: () => router.push(link) } : undefined,
+        });
+        // لا تزود unread يدويًا — listeners في Firestore هي اللي هتحدّثه
+      });
+    })();
+
+    return () => {
+      if (unsub) unsub();
+    };
+  }, [loading, uid, router]);
+
+  // 4) Badge على أيقونة الـ PWA (متاح غالبًا على Android/Chrome)
+  useEffect(() => {
+    // @ts-ignore
+    if (navigator.setAppBadge) {
+      // @ts-ignore
+      navigator.setAppBadge(unreadCount);
+    }
+    // @ts-ignore
+    if (unreadCount === 0 && navigator.clearAppBadge) {
+      // @ts-ignore
+      navigator.clearAppBadge();
+    }
+  }, [unreadCount]);
 
   if (loading || !uid) return null;
 
@@ -144,7 +210,6 @@ export function NotificationBell() {
                       </span>
                     )}
 
-                    {/* ✅ تاريخ بفول باك */}
                     <span className="text-[11px] text-muted-foreground">
                       {n.createdAt?.toDate
                         ? n.createdAt.toDate().toLocaleString("ar-SA")
@@ -161,15 +226,8 @@ export function NotificationBell() {
 
         <div className="border-t px-4 py-2 text-xs flex items-center justify-between">
           <span className="text-muted-foreground">تظهر آخر ١٠ إشعارات</span>
-          <Button
-            asChild
-            variant="link"
-            size="sm"
-            className="px-0 h-auto text-xs"
-          >
-            <Link href={uid ? `/employees/${uid}` : "/me"}>
-                 
-            </Link>
+          <Button asChild variant="link" size="sm" className="px-0 h-auto text-xs">
+            <Link href={uid ? `/employees/${uid}` : "/me"}>عرض الملف</Link>
           </Button>
         </div>
       </PopoverContent>
