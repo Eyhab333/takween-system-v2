@@ -1,6 +1,6 @@
 {
-  "name": "Takween CMS Application",
-  "short_name": "TakweenCMS",
+  "name": "مراسلات - تكوين",
+  "short_name": "مراسلات",
   "start_url": "/",
   "scope": "/",
   "display": "standalone",

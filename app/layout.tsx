@@ -13,7 +13,7 @@ const tajawal = Tajawal({
 });
 
 export const metadata = {
-  title: "Takween CMS Application",
+  title: "مراسلات - تكوين",
   description: "Takween CMS Application",
   manifest: "/manifest.webmanifest",
 }
