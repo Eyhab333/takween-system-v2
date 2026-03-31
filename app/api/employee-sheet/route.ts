@@ -1,14 +1,13 @@
-// app/api/employee-sheet/route.ts
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 import { NextRequest } from "next/server";
 import { google } from "googleapis";
 import admin from "firebase-admin";
+import { getEmployeeSectionConfig } from "@/lib/employee-file-sections";
 
 const HR_ROLES = ["hr", "chairman", "ceo", "admin", "superadmin"] as const;
 
-// ✅ init firebase-admin مرة واحدة
 function getAdminApp() {
   if (admin.apps.length) return admin.app();
 
@@ -18,7 +17,7 @@ function getAdminApp() {
 
   const clientEmail =
     process.env.FIREBASE_CLIENT_EMAIL ||
-    process.env.GOOGLE_CLIENT_EMAIL; // لو نفس الإيميل عندك
+    process.env.GOOGLE_CLIENT_EMAIL;
 
   const privateKey =
     (process.env.FIREBASE_PRIVATE_KEY || process.env.GOOGLE_PRIVATE_KEY || "")
@@ -37,11 +36,16 @@ function getAdminApp() {
   });
 }
 
+function escapeSheetName(name: string) {
+  return name.replace(/'/g, "''");
+}
+
 export async function GET(req: NextRequest) {
   try {
-    // ===== 1) اقرأ nationalId من query =====
     const { searchParams } = new URL(req.url);
+
     const nationalId = searchParams.get("nationalId")?.trim();
+    const section = searchParams.get("section")?.trim();
 
     if (!nationalId) {
       return Response.json(
@@ -50,7 +54,21 @@ export async function GET(req: NextRequest) {
       );
     }
 
-    // ===== 2) تحقق من هوية الطالب عبر Firebase ID Token =====
+    if (!section) {
+      return Response.json(
+        { error: "section مفقود في الـ query" },
+        { status: 400 }
+      );
+    }
+
+    const sectionConfig = getEmployeeSectionConfig(section);
+    if (!sectionConfig) {
+      return Response.json(
+        { error: "section غير معروف أو غير مسموح" },
+        { status: 400 }
+      );
+    }
+
     const authHeader = req.headers.get("authorization") || "";
     const match = authHeader.match(/^Bearer\s+(.+)$/i);
     const idToken = match?.[1];
@@ -63,15 +81,15 @@ export async function GET(req: NextRequest) {
     }
 
     const app = getAdminApp();
-    const decoded = await app.auth().verifyIdToken(idToken); // توثيق التوكن :contentReference[oaicite:0]{index=0}
+    const decoded = await app.auth().verifyIdToken(idToken);
 
     const requesterUid = decoded.uid;
     const requesterRole = (decoded.role as string | undefined) || "employee";
     const isHrOrAbove = HR_ROLES.includes(requesterRole as any);
 
-    // ===== 3) لو مش HR: لازم الهوية المطلوبة = هوية المستخدم نفسه في Firestore =====
     if (!isHrOrAbove) {
       const userSnap = await app.firestore().doc(`users/${requesterUid}`).get();
+
       if (!userSnap.exists) {
         return Response.json(
           { error: "Requester user doc not found" },
@@ -81,13 +99,14 @@ export async function GET(req: NextRequest) {
 
       const userData = userSnap.data() as any;
 
-      // عندك الهوية داخل personalInfo.nationalId
       const myNationalId =
-        (userData?.personalInfo?.nationalId ||
-          userData?.nationalId ||
-          "") + "";
+        String(
+          userData?.personalInfo?.nationalId ||
+            userData?.nationalId ||
+            ""
+        ).trim();
 
-      if (myNationalId.trim() !== nationalId) {
+      if (myNationalId !== nationalId) {
         return Response.json(
           { error: "Forbidden: nationalId لا يطابق حسابك" },
           { status: 403 }
@@ -95,7 +114,6 @@ export async function GET(req: NextRequest) {
       }
     }
 
-    // ===== 4) Google Sheets API (زي ما كان) =====
     const clientEmail = process.env.GOOGLE_CLIENT_EMAIL;
     const privateKey = process.env.GOOGLE_PRIVATE_KEY?.replace(/\\n/g, "\n");
     const spreadsheetId =
@@ -117,7 +135,9 @@ export async function GET(req: NextRequest) {
     });
 
     const sheets = google.sheets({ version: "v4", auth: gAuth });
-    const range = `'رحلة الموظف'!A1:AZ1000`;
+
+    const sheetName = escapeSheetName(sectionConfig.sheetName);
+    const range = `'${sheetName}'!${sectionConfig.range || "A1:AZ1000"}`;
 
     const res = await sheets.spreadsheets.values.get({
       spreadsheetId,
@@ -130,17 +150,18 @@ export async function GET(req: NextRequest) {
     }
 
     const headers = rows[0].map((h: string) => (h || "").trim());
-    const nationalIdIndex = headers.indexOf("nationalId");
+    const nationalIdHeader = sectionConfig.nationalIdHeader || "nationalId";
+    const nationalIdIndex = headers.indexOf(nationalIdHeader);
 
     if (nationalIdIndex === -1) {
       return Response.json(
-        { error: "لم يتم العثور على عمود nationalId في الشيت" },
+        { error: `لم يتم العثور على عمود ${nationalIdHeader} في الشيت` },
         { status: 500 }
       );
     }
 
     const dataRow = rows.find(
-      (row, idx) => idx > 0 && String(row[nationalIdIndex]).trim() === nationalId
+      (row, idx) => idx > 0 && String(row[nationalIdIndex] ?? "").trim() === nationalId
     );
 
     if (!dataRow) {
@@ -153,19 +174,36 @@ export async function GET(req: NextRequest) {
     const employee: Record<string, string> = {};
     headers.forEach((header, i) => {
       if (!header) return;
-      employee[header] = (dataRow[i] ?? "").toString().trim();
+      employee[header] = String(dataRow[i] ?? "").trim();
     });
 
+    let finalEmployee = employee;
+
+    if (sectionConfig.visibleFields?.length) {
+      finalEmployee = {};
+      for (const key of sectionConfig.visibleFields) {
+        if (key in employee) {
+          finalEmployee[key] = employee[key];
+        }
+      }
+    }
+
     return Response.json(
-      { ok: true, nationalId, employee },
+      {
+        ok: true,
+        nationalId,
+        section,
+        title: sectionConfig.title,
+        employee: finalEmployee,
+      },
       { status: 200 }
     );
   } catch (err: any) {
-  console.error("employee-sheet error:", err);
-  return Response.json(
-    { error: err?.message || String(err) || "Unknown server error" },
-    { status: 500 }
-  );
-}
+    console.error("employee-sheet error:", err);
 
+    return Response.json(
+      { error: err?.message || String(err) || "Unknown server error" },
+      { status: 500 }
+    );
+  }
 }
