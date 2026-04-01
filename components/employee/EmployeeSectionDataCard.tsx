@@ -10,7 +10,7 @@ import {
   CardContent,
 } from "@/components/ui/card";
 import { auth } from "@/lib/firebase";
-import { getEmployeeSectionConfig } from "@/lib/employee-file-sections";
+import { getEmployeeSectionConfig } from "@/lib/employee-sections";
 
 type EmployeeSheet = Record<string, string>;
 
@@ -114,12 +114,17 @@ export default function EmployeeSectionDataCard({
   }, [nationalId, section]);
 
   const entries = useMemo(() => {
-    if (!employeeSheet) return [];
+  if (!employeeSheet || !sectionConfig) return [];
 
-    return Object.entries(employeeSheet).filter(
-      ([k, v]) => k && v && String(v).trim() !== ""
-    );
-  }, [employeeSheet]);
+  const orderedKeys =
+    sectionConfig.allowedFields?.length
+      ? sectionConfig.allowedFields
+      : Object.keys(employeeSheet);
+
+  return orderedKeys
+    .map((key) => [key, employeeSheet[key]] as const)
+    .filter(([k, v]) => k && v && String(v).trim() !== "");
+}, [employeeSheet, sectionConfig]);
 
   const getLabel = (key: string) => {
     return sectionConfig?.fieldLabels?.[key] || key;

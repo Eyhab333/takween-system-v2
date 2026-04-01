@@ -4,7 +4,7 @@ export const dynamic = "force-dynamic";
 import { NextRequest } from "next/server";
 import { google } from "googleapis";
 import admin from "firebase-admin";
-import { EMPLOYEE_SHEET_SECTIONS } from "@/lib/employee-sheet-sections";
+import { getEmployeeSectionConfig } from "@/lib/employee-sections";
 
 const HR_ROLES = ["hr", "chairman", "ceo", "admin", "superadmin"] as const;
 
@@ -63,10 +63,7 @@ export async function GET(req: NextRequest) {
       );
     }
 
-    const cfg =
-      EMPLOYEE_SHEET_SECTIONS[
-        section as keyof typeof EMPLOYEE_SHEET_SECTIONS
-      ];
+    const cfg = getEmployeeSectionConfig(section);
 
     if (!cfg) {
       return Response.json(
@@ -103,11 +100,11 @@ export async function GET(req: NextRequest) {
         );
       }
 
-      const userData = userSnap.data() as any;
+      const userData = userSnap.data() as Record<string, unknown>;
+      const personalInfo = (userData.personalInfo as Record<string, unknown> | undefined) || {};
+
       const myNationalId = String(
-        userData?.personalInfo?.nationalId ||
-          userData?.nationalId ||
-          ""
+        personalInfo.nationalId || userData.nationalId || ""
       ).trim();
 
       if (myNationalId !== nationalId) {
@@ -202,11 +199,14 @@ export async function GET(req: NextRequest) {
       },
       { status: 200 }
     );
-  } catch (err: any) {
+  } catch (err: unknown) {
     console.error("employee-sheet error:", err);
 
+    const message =
+      err instanceof Error ? err.message : "Unknown server error";
+
     return Response.json(
-      { error: err?.message || "Unknown server error" },
+      { error: message },
       { status: 500 }
     );
   }

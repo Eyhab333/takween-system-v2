@@ -8,7 +8,7 @@ import { ArrowRight } from "lucide-react";
 import { doc, getDoc } from "firebase/firestore";
 
 import { db } from "@/lib/firebase";
-import { getEmployeeSectionConfig } from "@/lib/employee-file-sections";
+import { getEmployeeSectionConfig } from "@/lib/employee-sections";
 import EmployeeSectionDataCard from "@/components/employee/EmployeeSectionDataCard";
 import { Button } from "@/components/ui/button";
 
