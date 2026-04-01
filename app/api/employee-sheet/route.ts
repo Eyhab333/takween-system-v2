@@ -4,7 +4,7 @@ export const dynamic = "force-dynamic";
 import { NextRequest } from "next/server";
 import { google } from "googleapis";
 import admin from "firebase-admin";
-import { getEmployeeSectionConfig } from "@/lib/employee-file-sections";
+import { EMPLOYEE_SHEET_SECTIONS } from "@/lib/employee-sheet-sections";
 
 const HR_ROLES = ["hr", "chairman", "ceo", "admin", "superadmin"] as const;
 
@@ -36,6 +36,15 @@ function getAdminApp() {
   });
 }
 
+function normalizeHeader(value: unknown) {
+  return String(value ?? "")
+    .replace(/\r/g, "")
+    .replace(/\n/g, " ")
+    .replace(/\t/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
 function escapeSheetName(name: string) {
   return name.replace(/'/g, "''");
 }
@@ -45,7 +54,7 @@ export async function GET(req: NextRequest) {
     const { searchParams } = new URL(req.url);
 
     const nationalId = searchParams.get("nationalId")?.trim();
-    const section = searchParams.get("section")?.trim();
+    const section = searchParams.get("section")?.trim() || "info";
 
     if (!nationalId) {
       return Response.json(
@@ -54,17 +63,14 @@ export async function GET(req: NextRequest) {
       );
     }
 
-    if (!section) {
-      return Response.json(
-        { error: "section مفقود في الـ query" },
-        { status: 400 }
-      );
-    }
+    const cfg =
+      EMPLOYEE_SHEET_SECTIONS[
+        section as keyof typeof EMPLOYEE_SHEET_SECTIONS
+      ];
 
-    const sectionConfig = getEmployeeSectionConfig(section);
-    if (!sectionConfig) {
+    if (!cfg) {
       return Response.json(
-        { error: "section غير معروف أو غير مسموح" },
+        { error: "section غير معروف" },
         { status: 400 }
       );
     }
@@ -98,13 +104,11 @@ export async function GET(req: NextRequest) {
       }
 
       const userData = userSnap.data() as any;
-
-      const myNationalId =
-        String(
-          userData?.personalInfo?.nationalId ||
-            userData?.nationalId ||
-            ""
-        ).trim();
+      const myNationalId = String(
+        userData?.personalInfo?.nationalId ||
+          userData?.nationalId ||
+          ""
+      ).trim();
 
       if (myNationalId !== nationalId) {
         return Response.json(
@@ -116,8 +120,6 @@ export async function GET(req: NextRequest) {
 
     const clientEmail = process.env.GOOGLE_CLIENT_EMAIL;
     const privateKey = process.env.GOOGLE_PRIVATE_KEY?.replace(/\\n/g, "\n");
-    const spreadsheetId =
-      process.env.GOOGLE_SHEET_ID || "1FAKE_SPREADSHEET_ID_CHANGE_ME";
 
     if (!clientEmail || !privateKey) {
       return Response.json(
@@ -136,32 +138,39 @@ export async function GET(req: NextRequest) {
 
     const sheets = google.sheets({ version: "v4", auth: gAuth });
 
-    const sheetName = escapeSheetName(sectionConfig.sheetName);
-    const range = `'${sheetName}'!${sectionConfig.range || "A1:AZ1000"}`;
+    const range = `'${escapeSheetName(cfg.sheetName)}'!${cfg.range}`;
 
     const res = await sheets.spreadsheets.values.get({
-      spreadsheetId,
+      spreadsheetId: cfg.spreadsheetId,
       range,
     });
 
     const rows = res.data.values || [];
+
     if (rows.length === 0) {
-      return Response.json({ error: "لا توجد بيانات في الشيت" }, { status: 404 });
+      return Response.json(
+        { error: "لا توجد بيانات في الشيت" },
+        { status: 404 }
+      );
     }
 
-    const headers = rows[0].map((h: string) => (h || "").trim());
-    const nationalIdHeader = sectionConfig.nationalIdHeader || "nationalId";
+    const rawHeaders = rows[0];
+    const headers = rawHeaders.map((h) => normalizeHeader(h));
+
+    const nationalIdHeader = normalizeHeader(cfg.nationalIdHeader);
     const nationalIdIndex = headers.indexOf(nationalIdHeader);
 
     if (nationalIdIndex === -1) {
       return Response.json(
-        { error: `لم يتم العثور على عمود ${nationalIdHeader} في الشيت` },
+        { error: `لم يتم العثور على عمود ${cfg.nationalIdHeader}` },
         { status: 500 }
       );
     }
 
     const dataRow = rows.find(
-      (row, idx) => idx > 0 && String(row[nationalIdIndex] ?? "").trim() === nationalId
+      (row, idx) =>
+        idx > 0 &&
+        normalizeHeader(row[nationalIdIndex]) === normalizeHeader(nationalId)
     );
 
     if (!dataRow) {
@@ -171,30 +180,25 @@ export async function GET(req: NextRequest) {
       );
     }
 
+    const allowedFieldsSet = new Set(
+      (cfg.allowedFields || []).map((f) => normalizeHeader(f))
+    );
+
     const employee: Record<string, string> = {};
+
     headers.forEach((header, i) => {
       if (!header) return;
+      if (allowedFieldsSet.size > 0 && !allowedFieldsSet.has(header)) return;
+
       employee[header] = String(dataRow[i] ?? "").trim();
     });
-
-    let finalEmployee = employee;
-
-    if (sectionConfig.visibleFields?.length) {
-      finalEmployee = {};
-      for (const key of sectionConfig.visibleFields) {
-        if (key in employee) {
-          finalEmployee[key] = employee[key];
-        }
-      }
-    }
 
     return Response.json(
       {
         ok: true,
-        nationalId,
         section,
-        title: sectionConfig.title,
-        employee: finalEmployee,
+        nationalId,
+        employee,
       },
       { status: 200 }
     );
@@ -202,7 +206,7 @@ export async function GET(req: NextRequest) {
     console.error("employee-sheet error:", err);
 
     return Response.json(
-      { error: err?.message || String(err) || "Unknown server error" },
+      { error: err?.message || "Unknown server error" },
       { status: 500 }
     );
   }

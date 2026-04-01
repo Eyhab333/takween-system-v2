@@ -107,7 +107,7 @@ export default function MyFileSectionPage() {
           </p>
         </div>
 
-        <Link href={`/employees/${uid}/my-file`}>
+        <Link href={`/employees/${uid}`}>
           <Button variant="outline" className="gap-2">
             <ArrowRight className="h-4 w-4" />
             رجوع

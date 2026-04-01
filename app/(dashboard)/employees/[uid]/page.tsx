@@ -30,8 +30,6 @@
 // import RoleGate from "@/components/auth/RoleGate";
 // import EmployeeSectionDataCard from "@/components/employee/EmployeeSectionDataCard";
 
-
-
 // type UserDoc = {
 //   uid: string;
 //   name?: string;
@@ -314,7 +312,6 @@
 //   }
 // }
 
-
 //   async function removeCertificate(id: string) {
 //     try {
 //       await auth.currentUser?.getIdToken(true);
@@ -424,7 +421,7 @@
 //           <Info label="UID" value={user.uid} mono />
 //         </CardContent>
 //       </Card> */}
-  
+
 //       {/* 🟦 بيانات الموظف من Google Sheets */}
 //       <EmployeeSectionDataCard
 //       nationalId={user.personalInfo?.nationalId}
@@ -746,16 +743,17 @@ const EMPLOYEE_CARDS: EmployeeCard[] = [
     icon: FileText,
   },
   {
-    key: "job",
-    title: "بيانات العمل",
-    description: "قسم إضافي يمكن ربطه لاحقًا من شيت أو مصدر آخر",
-    enabled: false,
-    icon: Briefcase,
+    key: "attendance",
+    title: "متابعة الحضور والغياب",
+    description: "عرض بيانات الحضور والغياب والحسومات",
+    href: (uid) => `/employees/${uid}/my-file/attendance`,
+    enabled: true,
+    icon: FileText,
   },
   {
     key: "documents",
-    title: "مستنداتي",
-    description: "قسم إضافي للمستندات أو أي معلومات أخرى",
+    title: "الرواتب",
+    description: "قسم إضافي قريبًا لعرض تفاصيل الرواتب والخصومات",
     enabled: false,
     icon: FolderOpen,
   },
@@ -783,7 +781,9 @@ export default function EmployeeHomePage() {
           return (
             <Card
               key={item.key}
-              className={item.enabled ? "transition hover:shadow-md" : "opacity-70"}
+              className={
+                item.enabled ? "transition hover:shadow-md" : "opacity-70"
+              }
             >
               <CardHeader className="space-y-3">
                 <div className="flex items-start justify-between gap-3">
