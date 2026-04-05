@@ -744,18 +744,19 @@ const EMPLOYEE_CARDS: EmployeeCard[] = [
   },
   {
     key: "attendance",
-    title: "متابعة الحضور والغياب",
-    description: "عرض بيانات الحضور والغياب والحسومات",
+    title: "الإجازات",
+    description: "عرض بيانات الحضور والغياب والإجازات وإجمالي الحسومات",
     href: (uid) => `/employees/${uid}/my-file/attendance`,
     enabled: true,
     icon: FileText,
   },
   {
     key: "documents",
-    title: "الرواتب",
-    description: "قسم إضافي قريبًا لعرض تفاصيل الرواتب والخصومات",
-    enabled: false,
-    icon: FolderOpen,
+    title: "ملخص الغياب والإجازات",
+    description: "عرض تفصيل غياب واجازات الموظف خلال العام الدراسي",
+    href: (uid) => `/employees/${uid}/my-file/holidays`,
+    enabled: true,
+    icon: FileText,
   },
 ];
 

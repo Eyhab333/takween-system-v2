@@ -23,7 +23,9 @@ export default function EmployeeSectionDataCard({
 }) {
   const sectionConfig = getEmployeeSectionConfig(section);
 
-  const [employeeSheet, setEmployeeSheet] = useState<EmployeeSheet | null>(null);
+  const [employeeSheet, setEmployeeSheet] = useState<EmployeeSheet | null>(
+    null,
+  );
   const [sheetLoading, setSheetLoading] = useState(false);
   const [sheetError, setSheetError] = useState<string | null>(null);
 
@@ -70,13 +72,13 @@ export default function EmployeeSectionDataCard({
 
         const res = await fetch(
           `/api/employee-sheet?nationalId=${encodeURIComponent(
-            nid
+            nid,
           )}&section=${encodeURIComponent(section)}`,
           {
             headers: {
               Authorization: `Bearer ${token}`,
             },
-          }
+          },
         );
 
         const data = await res.json();
@@ -92,7 +94,7 @@ export default function EmployeeSectionDataCard({
 
         sessionStorage.setItem(
           cacheKey,
-          JSON.stringify({ ts: Date.now(), employee })
+          JSON.stringify({ ts: Date.now(), employee }),
         );
 
         if (!cancelled) {
@@ -114,17 +116,16 @@ export default function EmployeeSectionDataCard({
   }, [nationalId, section]);
 
   const entries = useMemo(() => {
-  if (!employeeSheet || !sectionConfig) return [];
+    if (!employeeSheet || !sectionConfig) return [];
 
-  const orderedKeys =
-    sectionConfig.allowedFields?.length
+    const orderedKeys = sectionConfig.allowedFields?.length
       ? sectionConfig.allowedFields
       : Object.keys(employeeSheet);
 
-  return orderedKeys
-    .map((key) => [key, employeeSheet[key]] as const)
-    .filter(([k, v]) => k && v && String(v).trim() !== "");
-}, [employeeSheet, sectionConfig]);
+    return orderedKeys
+      .map((key) => [key, employeeSheet[key] ?? ""] as const)
+      .filter(([k]) => !!k);
+  }, [employeeSheet, sectionConfig]);
 
   const getLabel = (key: string) => {
     return sectionConfig?.fieldLabels?.[key] || key;
@@ -153,14 +154,10 @@ export default function EmployeeSectionDataCard({
         )}
 
         {sheetLoading && (
-          <div className="text-muted-foreground">
-            جاري تحميل البيانات...
-          </div>
+          <div className="text-muted-foreground">جاري تحميل البيانات...</div>
         )}
 
-        {sheetError && (
-          <div className="text-red-600 text-xs">{sheetError}</div>
-        )}
+        {sheetError && <div className="text-red-600 text-xs">{sheetError}</div>}
 
         {!sheetLoading && !sheetError && entries.length === 0 && (
           <div className="text-muted-foreground">لا توجد بيانات للعرض.</div>
@@ -173,7 +170,9 @@ export default function EmployeeSectionDataCard({
                 <div className="text-[11px] text-muted-foreground">
                   {getLabel(k)}
                 </div>
-                <div className="font-medium break-words">{v}</div>
+                <div className="font-medium break-words">
+                  {String(v).trim() !== "" ? v : "—"}
+                </div>
               </div>
             ))}
           </div>

@@ -172,7 +172,7 @@ export async function GET(req: NextRequest) {
 
     if (!dataRow) {
       return Response.json(
-        { error: "لم يتم العثور على موظف بهذا الرقم" },
+        { error: "لم يتم العثور على موظف بهذا الرقم (سجلك المدني غير موجود بهذه الصفحة)" },
         { status: 404 }
       );
     }
