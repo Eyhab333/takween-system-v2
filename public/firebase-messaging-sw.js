@@ -3,11 +3,11 @@ importScripts("https://www.gstatic.com/firebasejs/10.12.4/firebase-app-compat.js
 importScripts("https://www.gstatic.com/firebasejs/10.12.4/firebase-messaging-compat.js");
 
 firebase.initializeApp({
-  apiKey: process.env.NEXT_PUBLIC_FIREBASE_API_KEY,
-  authDomain: process.env.NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN,
-  projectId: process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID,
-  messagingSenderId: process.env.NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID,
-  appId: process.env.NEXT_PUBLIC_FIREBASE_APP_ID,
+  apiKey: "AIzaSyC09sh8e8NuP3uidzUOQauE2C2UjgAKWMo",
+  authDomain: "takween-almaryfa.firebaseapp.com",
+  projectId: "takween-almaryfa",
+  messagingSenderId: "987008445295",
+  appId: "1:987008445295:web:df8960ee8ce3f47421d69a",
 });
 
 const messaging = firebase.messaging();
