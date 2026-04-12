@@ -18,6 +18,7 @@ import {
   SheetTrigger,
 } from "@/components/ui/sheet";
 import Image from "next/image"
+import EnableNotificationsButton from "../EnableNotificationsButton";
 
 
 type NavItem = { label: string; href: string; minRole: Role };
@@ -144,6 +145,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
               router.replace("/login");
             }}
           >
+            <EnableNotificationsButton />
             <Button type="submit" variant="outline" className="w-full mt-4">
               تسجيل الخروج
             </Button>
@@ -233,6 +235,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
                           router.replace("/login");
                         }}
                       >
+                        <EnableNotificationsButton />
                         <Button type="submit" variant="outline" className="w-full mt-4">
                           تسجيل الخروج
                         </Button>

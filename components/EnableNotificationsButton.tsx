@@ -7,40 +7,52 @@ import { getMessaging, getToken, isSupported } from "firebase/messaging";
 import { app, auth, db } from "@/lib/firebase";
 import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
-
-// اختياري: لو حابب تمنع الزر لغير المصرّح لهم
 import useClaimsRole from "@/hooks/use-claims-role";
 
 export default function EnableNotificationsButton() {
-  const claimsState = useClaimsRole(); // اختياري
+  const claimsState = useClaimsRole();
   const [loading, setLoading] = useState(false);
 
   const enable = async () => {
     setLoading(true);
+
     try {
       const user = auth.currentUser;
       if (!user) {
-        toast.error("لازم تسجّل دخول الأول");
+        toast.error("لازم تسجّل دخول أولًا");
         return;
       }
 
       const supported = await isSupported();
       if (!supported) {
-        toast.error("المتصفح/الجهاز لا يدعم إشعارات الويب");
+        toast.error("المتصفح أو الجهاز لا يدعم إشعارات الويب");
+        return;
+      }
+
+      if (!("Notification" in window)) {
+        toast.error("هذا المتصفح لا يدعم الإشعارات");
         return;
       }
 
       if (!("serviceWorker" in navigator)) {
-        toast.error("Service Worker غير مدعوم");
+        toast.error("Service Worker غير مدعوم في هذا المتصفح");
         return;
       }
 
-      const reg = await navigator.serviceWorker.register(
-        "/firebase-messaging-sw.js",
-      );
+      if (Notification.permission === "denied") {
+        toast.error("الإشعارات مرفوضة من المتصفح. فعّلها من إعدادات الموقع أولًا");
+        return;
+      }
 
-      const perm = await Notification.requestPermission();
-      if (perm !== "granted") {
+      const reg = await navigator.serviceWorker.register("/firebase-messaging-sw.js");
+
+      let permission: NotificationPermission = Notification.permission;
+
+      if (permission === "default") {
+        permission = await Notification.requestPermission();
+      }
+
+      if (permission !== "granted") {
         toast.error("تم رفض إذن الإشعارات");
         return;
       }
@@ -61,21 +73,23 @@ export default function EnableNotificationsButton() {
         toast.error("تعذر الحصول على Token للإشعارات");
         return;
       }
-      // خزّن التوكن تحت المستخدم (يدعم تعدد الأجهزة/المتصفحات)
+
       await setDoc(
         doc(db, "users", user.uid, "fcmTokens", token),
         {
           token,
+          enabled: true,
           createdAt: serverTimestamp(),
+          updatedAt: serverTimestamp(),
           ua: navigator.userAgent,
-          role: (claimsState as any)?.role ?? null, // اختياري
+          role: (claimsState as any)?.role ?? null,
         },
-        { merge: true },
+        { merge: true }
       );
 
-      toast.success("تم تفعيل الإشعارات ✅");
+      toast.success("تم تفعيل الإشعارات بنجاح ✅");
     } catch (e: any) {
-      console.error(e);
+      console.error("enable notifications error:", e);
       toast.error(e?.message || "حصل خطأ أثناء تفعيل الإشعارات");
     } finally {
       setLoading(false);
@@ -83,8 +97,8 @@ export default function EnableNotificationsButton() {
   };
 
   return (
-    <Button onClick={enable} disabled={loading}>
-      {loading ? "..." : "تفعيل الإشعارات"}
+    <Button type="button" onClick={enable} disabled={loading}>
+      {loading ? "جارٍ التفعيل..." : "تفعيل الإشعارات"}
     </Button>
   );
 }

@@ -167,19 +167,26 @@ export default function InboxPage() {
   }, [loading, uid, myRecipientKey]);
 
   const items = useMemo(() => {
-    // ✅ دمج بدون تكرار + ترتيب حسب createdAt
-    const map = new Map<string, InternalRequest>();
-    for (const r of primary) map.set(r.id, r);
-    for (const r of cc) if (!map.has(r.id)) map.set(r.id, r);
+  // ✅ دمج بدون تكرار + ترتيب حسب createdAt
+  const map = new Map<string, InternalRequest>();
+  for (const r of primary) map.set(r.id, r);
+  for (const r of cc) if (!map.has(r.id)) map.set(r.id, r);
 
-    const arr = Array.from(map.values());
-    arr.sort((a, b) => {
-      const ta = a.createdAt ? a.createdAt.getTime() : 0;
-      const tb = b.createdAt ? b.createdAt.getTime() : 0;
-      return tb - ta;
-    });
-    return arr;
-  }, [primary, cc]);
+  let arr = Array.from(map.values());
+
+  // ✅ إخفاء الطلبات الملغية من وارد المدير التنفيذي فقط
+  if (myRecipientKey === "ceo") {
+    arr = arr.filter((r) => r.status !== "cancelled");
+  }
+
+  arr.sort((a, b) => {
+    const ta = a.createdAt ? a.createdAt.getTime() : 0;
+    const tb = b.createdAt ? b.createdAt.getTime() : 0;
+    return tb - ta;
+  });
+
+  return arr;
+}, [primary, cc, myRecipientKey]);
 
   const subscribed = subscribedPrimary && subscribedCc;
 

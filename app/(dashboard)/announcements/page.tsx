@@ -27,7 +27,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Separator } from "@/components/ui/separator";
 import { toast } from "sonner";
 
-
+import { redirect } from "next/navigation";
 
 // ======= ثوابت الاستهداف =======
 const HR_ROLES: Role[] = ["hr", "chairman", "ceo", "admin", "superadmin"];
@@ -70,228 +70,230 @@ type Ann = {
 
 // ======= صفحة التعميمات =======
 export default function AnnouncementsPage() {
-  const { role, uid, loading } = useClaimsRole();
-  const [pending, startTransition] = useTransition();
-  const [anns, setAnns] = useState<Ann[]>([]);
-  const [myUserDoc, setMyUserDoc] = useState<any>(null);
-  const [viewMode, setViewMode] = useState<"mine" | "all" | "forMe">("forMe");
+redirect("/");
 
-  const isHrOrAbove = !!role && HR_ROLES.includes(role);
+  // const { role, uid, loading } = useClaimsRole();
+  // const [pending, startTransition] = useTransition();
+  // const [anns, setAnns] = useState<Ann[]>([]);
+  // const [myUserDoc, setMyUserDoc] = useState<any>(null);
+  // const [viewMode, setViewMode] = useState<"mine" | "all" | "forMe">("forMe");
+
+  // const isHrOrAbove = !!role && HR_ROLES.includes(role);
 
   // حمّل وثيقة المستخدم لاستخراج userTokens لاحقًا
-  useEffect(() => {
-    if (loading || !uid) return;
-    (async () => {
-      const snap = await getDoc(doc(db, "users", uid));
-      setMyUserDoc(snap.exists() ? { id: snap.id, ...snap.data() } : null);
-    })();
-  }, [loading, uid]);
+  // useEffect(() => {
+  //   if (loading || !uid) return;
+  //   (async () => {
+  //     const snap = await getDoc(doc(db, "users", uid));
+  //     setMyUserDoc(snap.exists() ? { id: snap.id, ...snap.data() } : null);
+  //   })();
+  // }, [loading, uid]);
 
   // استعلام التعميمات الموجهة للمستخدم الحالي
-  useEffect(() => {
-    if (!uid) return;
-    (async () => {
-      try {
-        let list: Ann[] = [];
+  // useEffect(() => {
+  //   if (!uid) return;
+  //   (async () => {
+  //     try {
+  //       let list: Ann[] = [];
 
-        if (viewMode === "forMe") {
-          const tokens = buildUserTokens({
-            unit: myUserDoc?.unit ?? null,
-            schoolKey: myUserDoc?.schoolKey ?? null,
-            schoolType: myUserDoc?.schoolType ?? null,
-            tags: Array.isArray(myUserDoc?.tags) ? myUserDoc?.tags : [],
-          });
-          const tokens10 = tokens.slice(0, 10);
+  //       if (viewMode === "forMe") {
+  //         const tokens = buildUserTokens({
+  //           unit: myUserDoc?.unit ?? null,
+  //           schoolKey: myUserDoc?.schoolKey ?? null,
+  //           schoolType: myUserDoc?.schoolType ?? null,
+  //           tags: Array.isArray(myUserDoc?.tags) ? myUserDoc?.tags : [],
+  //         });
+  //         const tokens10 = tokens.slice(0, 10);
 
-          const qy = query(
-            collection(db, "announcements"),
-            where("audTokens", "array-contains-any", tokens10),
-            orderBy("createdAt", "desc"),
-            limit(50)
-          );
-          const snap = await getDocs(qy);
-          list = snap.docs.map((d) => ({ id: d.id, ...(d.data() as any) }));
-        }
+  //         const qy = query(
+  //           collection(db, "announcements"),
+  //           where("audTokens", "array-contains-any", tokens10),
+  //           orderBy("createdAt", "desc"),
+  //           limit(50)
+  //         );
+  //         const snap = await getDocs(qy);
+  //         list = snap.docs.map((d) => ({ id: d.id, ...(d.data() as any) }));
+  //       }
 
-        if (viewMode === "mine") {
-          const qy = query(
-            collection(db, "announcements"),
-            where("createdBy", "==", uid),
-            orderBy("createdAt", "desc"),
-            limit(50)
-          );
-          const snap = await getDocs(qy);
-          list = snap.docs.map((d) => ({ id: d.id, ...(d.data() as any) }));
-        }
+  //       if (viewMode === "mine") {
+  //         const qy = query(
+  //           collection(db, "announcements"),
+  //           where("createdBy", "==", uid),
+  //           orderBy("createdAt", "desc"),
+  //           limit(50)
+  //         );
+  //         const snap = await getDocs(qy);
+  //         list = snap.docs.map((d) => ({ id: d.id, ...(d.data() as any) }));
+  //       }
 
-        if (viewMode === "all") {
-          const qy = query(
-            collection(db, "announcements"),
-            orderBy("createdAt", "desc"),
-            limit(50)
-          );
-          const snap = await getDocs(qy);
-          list = snap.docs.map((d) => ({ id: d.id, ...(d.data() as any) }));
-        }
+  //       if (viewMode === "all") {
+  //         const qy = query(
+  //           collection(db, "announcements"),
+  //           orderBy("createdAt", "desc"),
+  //           limit(50)
+  //         );
+  //         const snap = await getDocs(qy);
+  //         list = snap.docs.map((d) => ({ id: d.id, ...(d.data() as any) }));
+  //       }
 
-        setAnns(list);
-      } catch (e) {
-        console.error(e);
-        toast.error("تعذر تحميل التعميمات");
-      }
-    })();
-  }, [uid, myUserDoc, viewMode]);
+  //       setAnns(list);
+  //     } catch (e) {
+  //       console.error(e);
+  //       toast.error("تعذر تحميل التعميمات");
+  //     }
+  //   })();
+  // }, [uid, myUserDoc, viewMode]);
 
   // إنشاء تعميم مع اختيار الجمهور
-  async function addAnnouncement(form: FormData) {
-    if (!isHrOrAbove) return;
-    try {
-      const title = (form.get("title") as string)?.trim();
-      const content = (form.get("content") as string)?.trim() || "";
+//   async function addAnnouncement(form: FormData) {
+//     if (!isHrOrAbove) return;
+//     try {
+//       const title = (form.get("title") as string)?.trim();
+//       const content = (form.get("content") as string)?.trim() || "";
 
-      if (!title) {
-        toast.error("العنوان مطلوب");
-        return;
-      }
+//       if (!title) {
+//         toast.error("العنوان مطلوب");
+//         return;
+//       }
 
-      // قراءة اختيارات الجمهور من الفورم
-      const allFlag = form.get("aud_all") === "on";
+//       // قراءة اختيارات الجمهور من الفورم
+//       const allFlag = form.get("aud_all") === "on";
 
-      const selectedSchools = form.getAll("aud_school") as string[]; // مفاتيح من SCHOOL_OPTIONS
-      const selectedUnits = form.getAll("aud_unit") as string[]; // council/executive/...
-      const selectedRoles = form.getAll("aud_role") as string[]; // employee/hr/...
-      const rawTags = (form.get("aud_tags") as string)?.trim() || "";
-      const tagList = parseTags(rawTags); // يحول "teachers;staff" => ["teachers","staff"]
+//       const selectedSchools = form.getAll("aud_school") as string[]; // مفاتيح من SCHOOL_OPTIONS
+//       const selectedUnits = form.getAll("aud_unit") as string[]; // council/executive/...
+//       const selectedRoles = form.getAll("aud_role") as string[]; // employee/hr/...
+//       const rawTags = (form.get("aud_tags") as string)?.trim() || "";
+//       const tagList = parseTags(rawTags); // يحول "teachers;staff" => ["teachers","staff"]
 
-      // بناء audTokens
-      const audTokens = buildAudienceTokens({
-        all: allFlag,
-        schools: selectedSchools,
-        units: selectedUnits,
-        roles: selectedRoles,
-        tags: tagList,
-      });
+//       // بناء audTokens
+//       const audTokens = buildAudienceTokens({
+//         all: allFlag,
+//         schools: selectedSchools,
+//         units: selectedUnits,
+//         roles: selectedRoles,
+//         tags: tagList,
+//       });
 
-      if (audTokens.length === 0) {
-        toast.error("اختر جمهورًا للتعميم أو اختر (للجميع)");
-        return;
-      }
+//       if (audTokens.length === 0) {
+//         toast.error("اختر جمهورًا للتعميم أو اختر (للجميع)");
+//         return;
+//       }
 
-      const annRef = await addDoc(collection(db, "announcements"), {
-  title,
-  content,
-  audTokens,
-  createdAt: serverTimestamp(),
-  createdBy: uid || null,
-  pinned: false,
-});
+//       const annRef = await addDoc(collection(db, "announcements"), {
+//   title,
+//   content,
+//   audTokens,
+//   createdAt: serverTimestamp(),
+//   createdBy: uid || null,
+//   pinned: false,
+// });
 
-// ✅ هات التوكن وبعتُه للـ fanout
-try {
-  const token = await auth.currentUser?.getIdToken();
-  if (!token) {
-    console.error("fanout: missing token");
-    return;
-  }
+// // ✅ هات التوكن وبعتُه للـ fanout
+// try {
+//   const token = await auth.currentUser?.getIdToken();
+//   if (!token) {
+//     console.error("fanout: missing token");
+//     return;
+//   }
 
-  const fanRes = await fetch("/api/fanout-announcement", {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${token}`,
-    },
-    body: JSON.stringify({
-      title,
-      audTokens,
-      annId: annRef.id,
-    }),
-  });
+//   const fanRes = await fetch("/api/fanout-announcement", {
+//     method: "POST",
+//     headers: {
+//       "Content-Type": "application/json",
+//       Authorization: `Bearer ${token}`,
+//     },
+//     body: JSON.stringify({
+//       title,
+//       audTokens,
+//       annId: annRef.id,
+//     }),
+//   });
 
-  // ✅ اقرأ النص الأول (عشان لو HTML أو فاضي)
-  const rawText = await fanRes.text();
-  let fanData: any = null;
-  try {
-    fanData = rawText ? JSON.parse(rawText) : null;
-  } catch {
-    fanData = null;
-  }
+//   // ✅ اقرأ النص الأول (عشان لو HTML أو فاضي)
+//   const rawText = await fanRes.text();
+//   let fanData: any = null;
+//   try {
+//     fanData = rawText ? JSON.parse(rawText) : null;
+//   } catch {
+//     fanData = null;
+//   }
 
-  if (!fanRes.ok) {
-    console.error("fanout status:", fanRes.status);
-    console.error("fanout rawText:", rawText); // 👈 ده أهم سطر
-    console.error("fanout data:", fanData);
-    toast.error(fanData?.error || "فشل إرسال الإشعارات");
-  } else {
-    console.log("fanout ok:", fanData);
-  }
-} catch (e) {
-  console.warn("fanout fetch error", e);
-}
+//   if (!fanRes.ok) {
+//     console.error("fanout status:", fanRes.status);
+//     console.error("fanout rawText:", rawText); // 👈 ده أهم سطر
+//     console.error("fanout data:", fanData);
+//     toast.error(fanData?.error || "فشل إرسال الإشعارات");
+//   } else {
+//     console.log("fanout ok:", fanData);
+//   }
+// } catch (e) {
+//   console.warn("fanout fetch error", e);
+// }
 
 
+//       toast.success("تم إنشاء التعميم");
+//       (document.getElementById("ann-form") as HTMLFormElement)?.reset();
 
-      toast.success("تم إنشاء التعميم");
-      (document.getElementById("ann-form") as HTMLFormElement)?.reset();
+//       // إعادة تحميل مبسطة
+//       const tokens = buildUserTokens({
+//         unit: myUserDoc?.unit ?? null,
+//         schoolKey: myUserDoc?.schoolKey ?? null,
+//         schoolType: myUserDoc?.schoolType ?? null,
+//         tags: Array.isArray(myUserDoc?.tags) ? myUserDoc?.tags : [],
+//       }).slice(0, 10);
 
-      // إعادة تحميل مبسطة
-      const tokens = buildUserTokens({
-        unit: myUserDoc?.unit ?? null,
-        schoolKey: myUserDoc?.schoolKey ?? null,
-        schoolType: myUserDoc?.schoolType ?? null,
-        tags: Array.isArray(myUserDoc?.tags) ? myUserDoc?.tags : [],
-      }).slice(0, 10);
-
-      const qy = query(
-        collection(db, "announcements"),
-        where("audTokens", "array-contains-any", tokens),
-        orderBy("createdAt", "desc"),
-        limit(50)
-      );
-      const snap = await getDocs(qy);
-      setAnns(snap.docs.map((d) => ({ id: d.id, ...(d.data() as any) })));
-    } catch (e: any) {
-      console.error(e);
-      toast.error("فشل إنشاء التعميم");
-    }
-  }
+//       const qy = query(
+//         collection(db, "announcements"),
+//         where("audTokens", "array-contains-any", tokens),
+//         orderBy("createdAt", "desc"),
+//         limit(50)
+//       );
+//       const snap = await getDocs(qy);
+//       setAnns(snap.docs.map((d) => ({ id: d.id, ...(d.data() as any) })));
+//     } catch (e: any) {
+//       console.error(e);
+//       toast.error("فشل إنشاء التعميم");
+//     }
+//   }
 
   // حذف تعميم (HR+ فقط)
-  async function deleteAnnouncement(id: string) {
-    if (!isHrOrAbove) return;
-    if (!confirm("حذف هذا التعميم؟ سيختفي من الجميع.")) return;
-    try {
-      await deleteDoc(doc(db, "announcements", id));
-      setAnns((prev) => prev.filter((a) => a.id !== id));
-      toast.success("تم حذف التعميم");
-    } catch (e: any) {
-      console.error(e);
-      toast.error("فشل حذف التعميم (تحقق من الصلاحيات)");
-    }
-  }
+  // async function deleteAnnouncement(id: string) {
+  //   if (!isHrOrAbove) return;
+  //   if (!confirm("حذف هذا التعميم؟ سيختفي من الجميع.")) return;
+  //   try {
+  //     await deleteDoc(doc(db, "announcements", id));
+  //     setAnns((prev) => prev.filter((a) => a.id !== id));
+  //     toast.success("تم حذف التعميم");
+  //   } catch (e: any) {
+  //     console.error(e);
+  //     toast.error("فشل حذف التعميم (تحقق من الصلاحيات)");
+  //   }
+  // }
 
   // تبديل “مقروء/غير مقروء” للمستخدم الحالي
-  async function toggleRead(annId: string) {
-    if (!uid) return;
-    try {
-      const rdRef = doc(db, "announcements", annId, "reads", uid);
-      const rdSnap = await getDoc(rdRef);
-      if (rdSnap.exists()) {
-        await deleteDoc(rdRef); // اجعله "غير مقروء"
-      } else {
-        await setDoc(rdRef, { readAt: serverTimestamp() }); // اجعله "مقروء"
-      }
-      // UI مجرد تبديل محلي سريع
-      setAnns((prev) => [...prev]);
-    } catch (e: any) {
-      console.error(e);
-      toast.error("تعذر تبديل حالة القراءة");
-    }
-  }
+  // async function toggleRead(annId: string) {
+  //   if (!uid) return;
+  //   try {
+  //     const rdRef = doc(db, "announcements", annId, "reads", uid);
+  //     const rdSnap = await getDoc(rdRef);
+  //     if (rdSnap.exists()) {
+  //       await deleteDoc(rdRef); // اجعله "غير مقروء"
+  //     } else {
+  //       await setDoc(rdRef, { readAt: serverTimestamp() }); // اجعله "مقروء"
+  //     }
+  //     // UI مجرد تبديل محلي سريع
+  //     setAnns((prev) => [...prev]);
+  //   } catch (e: any) {
+  //     console.error(e);
+  //     toast.error("تعذر تبديل حالة القراءة");
+  //   }
+  // }
 
-  if (loading) return null;
+  // if (loading) return null;
 
-  return (
-    <div className="grid gap-6">
+  // return (
+    // <div className="grid gap-6">
+      
       {/* <Card>
         <CardHeader>
           <CardTitle>انشاء تعميم</CardTitle>
@@ -455,8 +457,8 @@ try {
           </div>
         </CardContent>
       </Card> */}
-    </div>
-  );
+    // </div>
+  // );
 }
 
 // ======= صف تعميم =======

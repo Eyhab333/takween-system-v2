@@ -751,13 +751,22 @@ const EMPLOYEE_CARDS: EmployeeCard[] = [
     icon: FileText,
   },
   {
-    key: "documents",
-    title: "ملخص الغياب والإجازات",
-    description: "عرض تفصيل غياب واجازات الموظف خلال العام الدراسي",
-    href: (uid) => `/employees/${uid}/my-file/holidays`,
-    enabled: true,
-    icon: FileText,
-  },
+  key: "leave-events",
+  title: "سجل الإجازات",
+  description: "الإجازات والسجل اليومي والملاحظات",
+  href: (uid) => `/employees/${uid}/leave-events`,
+  enabled: true,
+  icon: FileText,
+},
+  
+  {
+  key: "salary-events",
+  title: "الحركات والخصومات",
+  description: "التأخر والغياب ونسيان البصمة والحسومات",
+  href: (uid) => `/employees/${uid}/salary-events`,
+  enabled: true,
+  icon: FileText,
+},
 ];
 
 export default function EmployeeHomePage() {
