@@ -9,7 +9,8 @@ import { doc, getDoc } from "firebase/firestore";
 
 import { db } from "@/lib/firebase";
 import { Button } from "@/components/ui/button";
-import EmployeeSalaryEventsPanel from "@/components/employee/EmployeeSalaryEventsPanel";
+import EmployeeSalaryEventsPanel from "@/components/employee/EmployeeDisciplinaryEventsPanel";
+import EmployeeDisciplinaryEventsPanel from "@/components/employee/EmployeeDisciplinaryEventsPanel";
 
 export default function EmployeeSalaryEventsPage() {
   const params = useParams<{ uid: string }>();
@@ -98,7 +99,7 @@ export default function EmployeeSalaryEventsPage() {
         </Link>
       </div>
 
-      <EmployeeSalaryEventsPanel nationalId={nationalId} />
+      <EmployeeDisciplinaryEventsPanel nationalId={nationalId} />
     </div>
   );
 }

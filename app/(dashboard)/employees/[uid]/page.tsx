@@ -714,7 +714,12 @@
 import Link from "next/link";
 import { useParams } from "next/navigation";
 import { ChevronLeft, FileText, Briefcase, FolderOpen } from "lucide-react";
-
+import {
+  BadgeInfo,
+  CalendarDays,
+  PlaneTakeoff,
+  ShieldAlert,
+} from "lucide-react";
 import {
   Card,
   CardHeader,
@@ -740,7 +745,7 @@ const EMPLOYEE_CARDS: EmployeeCard[] = [
     description: "عرض بياناتي الوظيفية الأساسية من Google Sheets",
     href: (uid) => `/employees/${uid}/my-file/info`,
     enabled: true,
-    icon: FileText,
+    icon: BadgeInfo,
   },
   {
     key: "attendance",
@@ -748,24 +753,24 @@ const EMPLOYEE_CARDS: EmployeeCard[] = [
     description: "عرض بيانات الحضور والغياب والإجازات وإجمالي الحسومات",
     href: (uid) => `/employees/${uid}/my-file/attendance`,
     enabled: true,
-    icon: FileText,
+    icon: CalendarDays,
   },
   {
   key: "leave-events",
-  title: "سجل الإجازات",
-  description: "الإجازات والسجل اليومي والملاحظات",
+  title: "تفاصيل الإجازات",
+  description: "الإجازات  ",
   href: (uid) => `/employees/${uid}/leave-events`,
   enabled: true,
-  icon: FileText,
+  icon: PlaneTakeoff,
 },
   
   {
-  key: "salary-events",
+  key: "disciplinary-events",
   title: "الحركات والخصومات",
-  description: "التأخر والغياب ونسيان البصمة والحسومات",
-  href: (uid) => `/employees/${uid}/salary-events`,
+  description: "خصومات التأخر والغياب ونسيان البصمة ",
+  href: (uid) => `/employees/${uid}/disciplinary-events`,
   enabled: true,
-  icon: FileText,
+  icon: ShieldAlert,
 },
 ];
 

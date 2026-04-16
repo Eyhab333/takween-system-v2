@@ -314,7 +314,7 @@ export default function EmployeeLeaveEventsPanel({
 
           {!loading && !error && events.length === 0 && (
             <div className="text-sm text-muted-foreground">
-              لا توجد سجلات ضمن الفلاتر الحالية.
+             لا توجد أي إجازات مسجلة للموظف خلال السنة العقدية
             </div>
           )}
 
