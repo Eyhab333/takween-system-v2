@@ -18,6 +18,7 @@ import {
   SheetTitle,
   SheetTrigger,
 } from "@/components/ui/sheet";
+import { FileText, Megaphone, PlusSquare, User } from "lucide-react";
 
 type NavItem = {
   label: string;
@@ -42,21 +43,17 @@ function hasRoleAtLeast(userRole: Role | null, min: Role) {
 const NAV_ITEMS: NavItem[] = [
   { label: "ملفي", href: "/me", minRole: "employee" },
   { label: "الطلبات", href: "/dashboard", minRole: "employee" },
-
+{ label: "التعميمات", href: "/announcements", minRole: "employee" },
   // { label: "إنشاء طلب", href: "/requests/new", minRole: "employee" },
   // { label: "الوارد", href: "/requests/inbox", minRole: "employee" },
   // { label: "الصادر", href: "/requests/outbox", minRole: "employee" },
   // { label: "الأرشيف", href: "/requests/archive", minRole: "employee" },
 
-  { label: "التعميمات", href: "/announcements", minRole: "employee" },
+  
   { label: "إنشاء تعميم", href: "/announcements/new", minRole: "superadmin" },
 ];
 
-export default function AppShell({
-  children,
-}: {
-  children: React.ReactNode;
-}) {
+export default function AppShell({ children }: { children: React.ReactNode }) {
   const { role, uid, loading } = useClaimsRole();
   const pathname = usePathname();
   const router = useRouter();
@@ -117,6 +114,16 @@ export default function AppShell({
 
   const items = NAV_ITEMS.filter((item) => hasRoleAtLeast(role, item.minRole));
 
+  const bottomNavItems = items.slice(0, 3); // Show only the top 3 items in the bottom nav
+
+  function getBottomNavIcon(href: string) {
+    if (href === "/me") return User;
+    if (href === "/dashboard") return FileText;
+    if (href === "/announcements") return Megaphone;
+    if (href === "/announcements/new") return PlusSquare;
+    return FileText;
+  }
+
   return (
     <div className="min-h-screen grid md:grid-cols-[240px_1fr]">
       <aside className="hidden md:block border-l">
@@ -164,7 +171,11 @@ export default function AppShell({
               <div className="md:hidden">
                 <Sheet open={mobileOpen} onOpenChange={setMobileOpen}>
                   <SheetTrigger asChild>
-                    <Button variant="outline" size="icon" aria-label="فتح القائمة">
+                    <Button
+                      variant="outline"
+                      size="icon"
+                      aria-label="فتح القائمة"
+                    >
                       <Menu className="h-5 w-5" />
                     </Button>
                   </SheetTrigger>
@@ -198,7 +209,9 @@ export default function AppShell({
                     <div className="space-y-2 p-4">
                       {items.map((it) => {
                         const targetHref =
-                          it.href === "/me" && uid ? `/employees/${uid}` : it.href;
+                          it.href === "/me" && uid
+                            ? `/employees/${uid}`
+                            : it.href;
 
                         const active =
                           pathname === targetHref ||
@@ -210,7 +223,9 @@ export default function AppShell({
                             href={targetHref}
                             onClick={() => setMobileOpen(false)}
                             className={`block rounded px-3 py-2 text-sm ${
-                              active ? "bg-muted font-semibold" : "hover:bg-muted"
+                              active
+                                ? "bg-muted font-semibold"
+                                : "hover:bg-muted"
                             }`}
                           >
                             {it.label}
@@ -228,7 +243,11 @@ export default function AppShell({
                         }}
                       >
                         <EnableNotificationsButton />
-                        <Button type="submit" variant="outline" className="mt-4 w-full">
+                        <Button
+                          type="submit"
+                          variant="outline"
+                          className="mt-4 w-full"
+                        >
                           تسجيل الخروج
                         </Button>
                       </form>
@@ -274,7 +293,38 @@ export default function AppShell({
           </div>
         </header>
 
-        <main className="container mx-auto px-4 py-6">{children}</main>
+        <main className="container mx-auto px-4 py-6 pb-24 md:pb-6">
+          {children}
+        </main>
+        <nav className="fixed bottom-0 inset-x-0 z-40 border-t bg-background/95 backdrop-blur md:hidden">
+          <div className="grid grid-cols-3">
+            {bottomNavItems.map((it) => {
+              const targetHref =
+                it.href === "/me" && uid ? `/employees/${uid}` : it.href;
+
+              const active =
+                pathname === targetHref ||
+                pathname?.startsWith(`${targetHref}/`);
+
+              const Icon = getBottomNavIcon(it.href);
+
+              return (
+                <Link
+                  key={it.href}
+                  href={targetHref}
+                  className={`flex min-h-16 flex-col items-center justify-center gap-1 px-2 text-[11px] ${
+                    active
+                      ? "text-primary font-semibold"
+                      : "text-muted-foreground hover:text-foreground"
+                  }`}
+                >
+                  <Icon className="h-5 w-5" />
+                  <span className="truncate">{it.label}</span>
+                </Link>
+              );
+            })}
+          </div>
+        </nav>
       </div>
     </div>
   );

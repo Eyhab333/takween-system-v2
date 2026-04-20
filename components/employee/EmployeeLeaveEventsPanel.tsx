@@ -12,6 +12,8 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 
+import EmployeeLeaveEventsTable from "@/components/employee/EmployeeLeaveEventsTable";
+
 type LeaveEmployee = {
   nationalId: string;
   name: string;
@@ -176,7 +178,7 @@ export default function EmployeeLeaveEventsPanel({
   const summary = data?.summary;
 
   return (
-    <div className="grid gap-4">
+    <div dir="rtl" className="grid gap-4 text-right">
       <Card>
         <CardHeader>
           <CardTitle>بيانات الموظف</CardTitle>
@@ -297,7 +299,7 @@ export default function EmployeeLeaveEventsPanel({
         <CardHeader>
           <CardTitle>سجل الإجازات</CardTitle>
         </CardHeader>
-        <CardContent className="space-y-3">
+        <CardContent className="space-y-3 text-right">
           {!nationalId && (
             <div className="text-sm text-muted-foreground">
               لا يوجد رقم هوية مخزن للمستخدم.
@@ -314,65 +316,14 @@ export default function EmployeeLeaveEventsPanel({
 
           {!loading && !error && events.length === 0 && (
             <div className="text-sm text-muted-foreground">
-             لا توجد أي إجازات مسجلة للموظف خلال السنة العقدية
+              لا توجد أي إجازات مسجلة للموظف خلال السنة العقدية
             </div>
           )}
 
           {!loading && !error && events.length > 0 && (
-            <div className="overflow-x-auto rounded-xl border">
-              <table className="w-full min-w-[1100px] text-sm">
-                <thead className="bg-muted/50">
-                  <tr className="border-b">
-                    <th className="px-3 py-2 text-right font-medium">
-                      التاريخ
-                    </th>
-                    <th className="px-3 py-2 text-right font-medium">اليوم</th>
-                    <th className="px-3 py-2 text-right font-medium">
-                      نوع الإجازة
-                    </th>
-                    <th className="px-3 py-2 text-right font-medium">الشهر</th>
-                    <th className="px-3 py-2 text-right font-medium">المصدر</th>
-                    <th className="px-3 py-2 text-right font-medium">الوصف</th>
-                    <th className="px-3 py-2 text-right font-medium">
-                      الملاحظة كاملة
-                    </th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {events.map((event, index) => (
-                    <tr
-                      key={`${event.eventDate}-${event.leaveType}-${index}`}
-                      className={`border-b last:border-b-0 align-top ${leaveRowClass(event.leaveType)}`}
-                    >
-                      <td className="px-3 py-2 whitespace-nowrap">
-                        {formatDate(event.eventDate)}
-                      </td>
-                      <td className="px-3 py-2 whitespace-nowrap">
-                        {event.dayName || "—"}
-                      </td>
-                      <td className="px-3 py-2 whitespace-nowrap">
-                        <span
-                          className={`inline-flex rounded-full border px-2 py-1 text-xs ${leaveTypeBadgeClass(
-                            event.leaveType,
-                          )}`}
-                        >
-                          {event.leaveType || "—"}
-                        </span>
-                      </td>
-                      <td className="px-3 py-2 whitespace-nowrap">
-                        {event.monthLabel || "—"}
-                      </td>
-                      <td className="px-3 py-2">{event.source || "—"}</td>
-                      <td className="px-3 py-2">{event.description || "—"}</td>
-                      <td className="px-3 py-2 whitespace-pre-wrap">
-                        {event.fullNote || "—"}
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
+            <EmployeeLeaveEventsTable events={events as LeaveEvent[]} />
           )}
+
         </CardContent>
       </Card>
     </div>
