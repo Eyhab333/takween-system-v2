@@ -65,6 +65,7 @@ const MNAR_BOYS_STAFF: RequestRecipientKey[] = [
 
 const MNAR_GIRLS_STAFF: RequestRecipientKey[] = [
   //  طاقم منار بنات 
+  "media_programs",
   "mnar_girls_f_alobawe",     
 "mnar_girls_h_anaz",        
 "mnar_girls_n_y_almasoud",      
@@ -202,9 +203,9 @@ const basePermissions: Partial<Record<RequestRecipientKey, RequestRecipientKey[]
   projects: ["ceo", "maintenance"],
   maintenance: ["projects"],
 
-  media_manager: ["ceo", "designer", "media_programs"],
+  media_manager: ["ceo", "designer"],//, "media_programs
   designer: ["media_manager"],
-  media_programs: ["media_manager"],
+  //media_programs: ["media_manager"],
 
   supervision_head: [
     "ceo",
