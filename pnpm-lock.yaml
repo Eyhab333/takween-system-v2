@@ -142,7 +142,7 @@ importers:
         specifier: ^10.4.19
         version: 10.5.0(postcss@8.5.10)
       baseline-browser-mapping:
-        specifier: ^2.10.18
+        specifier: ^2.10.20
         version: 2.10.20
       eslint:
         specifier: ^9
