@@ -84,9 +84,9 @@ export default function EmployeeLeaveEventsPage() {
     <div className="max-w-6xl mx-auto grid gap-4">
       <div className="flex items-center justify-between gap-3">
         <div className="space-y-1">
-          <h1 className="text-2xl font-bold">سجل الإجازات</h1>
+          <h1 className="text-2xl font-bold">تفاصيل الإجازات والغياب</h1>
           <p className="text-sm text-muted-foreground">
-            عرض الإجازات والسجل اليومي  .
+           
           </p>
         </div>
 

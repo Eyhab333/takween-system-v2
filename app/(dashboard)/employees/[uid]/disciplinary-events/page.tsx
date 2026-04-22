@@ -85,9 +85,8 @@ export default function EmployeeSalaryEventsPage() {
     <div className="max-w-6xl mx-auto grid gap-4">
       <div className="flex items-center justify-between gap-3">
         <div className="space-y-1">
-          <h1 className="text-2xl font-bold">الحركات والخصومات</h1>
+          <h1 className="text-2xl font-bold">الحسومات</h1>
           <p className="text-sm text-muted-foreground">
-            عرض التأخر والغياب ونسيان البصمة والحسومات.
           </p>
         </div>
 

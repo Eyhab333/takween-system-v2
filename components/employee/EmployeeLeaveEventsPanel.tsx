@@ -295,11 +295,12 @@ export default function EmployeeLeaveEventsPanel({
         />
       </div>
 
-      <Card>
+      <Card className="max-w-full overflow-hidden">
         <CardHeader>
           <CardTitle>سجل الإجازات</CardTitle>
         </CardHeader>
-        <CardContent className="space-y-3 text-right">
+        {/* أضفنا w-full و overflow-hidden هنا أيضاً لضمان عدم خروج الجدول */}
+        <CardContent className="space-y-3 text-right w-full overflow-hidden">
           {!nationalId && (
             <div className="text-sm text-muted-foreground">
               لا يوجد رقم هوية مخزن للمستخدم.

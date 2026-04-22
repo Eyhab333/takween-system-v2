@@ -14,7 +14,7 @@ export const EMPLOYEE_SECTIONS: EmployeeSectionConfig[] = [
   {
     key: "info",
     title: "معلوماتي",
-    description: "البيانات الوظيفية الأساسية من Google Sheets",
+    description: "   ",
     spreadsheetId: process.env.GOOGLE_SHEET_ID!,
     sheetName: "رحلة الموظف",
     range: "A1:AZ1000",
@@ -86,8 +86,8 @@ export const EMPLOYEE_SECTIONS: EmployeeSectionConfig[] = [
 
   {
     key: "attendance",
-    title: "الإجازات",
-    description: "عرض بيانات الحضور والغياب والإجازات وإجمالي الحسومات",
+    title: "إجمالي الغياب والحسومات",
+    description: "",
     spreadsheetId: "1xbDLkgjpzZOLA_CM34Q6Bu0rZYrjOwT3SZxigClcQ30",
     sheetName: "الإحصائية(إجمالي الشهور)",
     range: "A1:AZ1000",
@@ -141,8 +141,8 @@ export const EMPLOYEE_SECTIONS: EmployeeSectionConfig[] = [
 
   {
     key: "holidays",
-    title: "ملخص الغياب والإجازات",
-    description: "عرض تفاصيل غياب واجازات الموظف خلال العام الدراسي",
+    title: "تفاصيل الإجازات والغياب",
+    description: "",
     spreadsheetId: "1xbDLkgjpzZOLA_CM34Q6Bu0rZYrjOwT3SZxigClcQ30",
     sheetName: "ملخص_اجازات_للادارة",
     range: "A1:AZ1000",
@@ -168,8 +168,8 @@ export const EMPLOYEE_SECTIONS: EmployeeSectionConfig[] = [
 
   {
     key: "salary",
-    title: "الرواتب والخصومات",
-    description: "عرض تفاصيل رواتب وخصومات الموظف خلال العام الدراسي",
+    title: "الحسومات",
+    description: "",
     spreadsheetId: "1xbDLkgjpzZOLA_CM34Q6Bu0rZYrjOwT3SZxigClcQ30",
     sheetName: "",
     range: "A1:AZ1000",

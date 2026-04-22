@@ -79,42 +79,38 @@ export default function EmployeeLeaveEventsTable({
   events: LeaveEvent[];
 }) {
   return (
-    <div dir="rtl" className="space-y-3 text-right">
-      <div className="overflow-hidden rounded-xl border">
-        <ScrollArea dir="rtl" type="always" className="w-full">
-          <div className="min-w-max">
-            <table className="min-w-[1100px] text-sm">
-              <thead className="bg-muted/50">
-                <tr className="border-b">
-                  <th className="px-3 py-2 text-right font-medium">التاريخ</th>
-                  <th className="px-3 py-2 text-right font-medium">اليوم</th>
-                  <th className="px-3 py-2 text-right font-medium">
-                    نوع الإجازة
-                  </th>
-                  <th className="px-3 py-2 text-right font-medium">الشهر</th>
-                  <th className=" px-3 py-2 text-right font-medium">المصدر</th>
-                  <th className="px-3 py-2 text-right font-medium">الوصف</th>
-                  <th className=" px-3 py-2 text-right font-medium">
-                    الملاحظة كاملة
-                  </th>
+  <div dir="rtl" className="w-full space-y-3 text-right">
+    {/* هذه الحاوية هي السر: w-full مع overflow-x-auto */}
+    <div className="w-full overflow-x-auto rounded-xl border border-border">
+      <table className="w-full min-w-[1000px] text-sm"> 
+        <thead className="bg-muted/50 border-b">
+          <tr className="h-12 px-4 text-right align-middle font-medium text-muted-foreground">
+             <th className="px-4 text-right">التاريخ</th>
+            <th className="px-4 text-right">اليوم</th>
+            <th className="px-4 text-right">نوع الإجازة</th>
+            <th className="px-4 text-right">الشهر</th>
+            <th className="px-4 text-right">المصدر</th>
+            <th className="px-4 text-right">الوصف</th>
+            <th className="px-4 text-right">الملاحظة كاملة</th>
+                  
                 </tr>
               </thead>
 
-              <tbody>
+              <tbody className="[&_tr:last-child]:border-0">
                 {events.map((event, index) => (
                   <tr
                     key={`${event.eventDate}-${event.leaveType}-${index}`}
-                    className={`border-b last:border-b-0 align-top ${leaveRowClass(event.leaveType)}`}
+                    className={`border-b transition-colors hover:bg-muted/50 ${leaveRowClass(event.leaveType)}`}
                   >
-                    <td className="px-3 py-2 text-right">
+                    <td className="p-4 align-middle whitespace-nowrap">
                       {formatDate(event.eventDate)}
                     </td>
 
-                    <td className="px-3 py-2 text-right">
+                    <td className="p-4 align-middle whitespace-nowrap">
                       {event.dayName || "—"}
                     </td>
 
-                    <td className="px-3 py-2 text-right">
+                    <td className="p-4 align-middle whitespace-nowrap">
                       <span
                         className={`inline-flex rounded-full border px-2 py-1 text-xs  ${leaveTypeBadgeClass(
                           event.leaveType,
@@ -124,19 +120,19 @@ export default function EmployeeLeaveEventsTable({
                       </span>
                     </td>
 
-                    <td className="px-3 py-2 text-right">
+                    <td className="p-4 align-middle whitespace-nowrap">
                       {event.monthLabel || "—"}
                     </td>
 
-                    <td className="px-3 py-2 text-right">
+                    <td className="p-4 align-middle whitespace-nowrap">
                       {event.source || "—"}
                     </td>
 
-                    <td className="px-3 py-2 text-right">
+                    <td className="p-4 align-middle whitespace-nowrap">
                       {event.description || "—"}
                     </td>
 
-                    <td className="px-3 py-2 text-right">
+                    <td className="p-4 align-middle whitespace-nowrap">
                       {event.fullNote || "—"}
                     </td>
                   </tr>
@@ -145,9 +141,8 @@ export default function EmployeeLeaveEventsTable({
             </table>
           </div>
 
-          <ScrollBar orientation="horizontal" />
-        </ScrollArea>
+        
       </div>
-    </div>
+    
   );
 }

@@ -382,7 +382,7 @@ export default function EmployeeDisciplinaryEventsPanel({
           className="border-emerald-200 bg-emerald-50"
         />
       </div>
-      <Card>
+      <Card className="max-w-full overflow-hidden">
         <CardHeader>
           <CardTitle>سجل الجزاءات</CardTitle>
         </CardHeader>
