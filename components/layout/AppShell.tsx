@@ -43,7 +43,7 @@ function hasRoleAtLeast(userRole: Role | null, min: Role) {
 const NAV_ITEMS: NavItem[] = [
   { label: "ملفي", href: "/me", minRole: "employee" },
   { label: "الطلبات", href: "/dashboard", minRole: "employee" },
-{ label: "التعميمات", href: "/announcements", minRole: "employee" },
+{ label: "التعاميم", href: "/announcements", minRole: "employee" },
   // { label: "إنشاء طلب", href: "/requests/new", minRole: "employee" },
   // { label: "الوارد", href: "/requests/inbox", minRole: "employee" },
   // { label: "الصادر", href: "/requests/outbox", minRole: "employee" },

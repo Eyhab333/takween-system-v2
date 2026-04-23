@@ -144,7 +144,7 @@ export default function AnnouncementsPage() {
       } catch (e: any) {
         console.error(e);
         if (!cancelled) {
-          toast.error(e?.message || "تعذر تحميل التعميمات");
+          toast.error(e?.message || "تعذر تحميل التعاميم");
         }
       } finally {
         if (!cancelled) {
@@ -237,9 +237,9 @@ export default function AnnouncementsPage() {
       <Card>
         <CardHeader className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
           <div>
-            <CardTitle>التعميمات</CardTitle>
+            <CardTitle>التعاميم</CardTitle>
             <div className="mt-1 text-sm text-muted-foreground">
-              تعرض لك هذه الصفحة التعميمات الموجهة إليك.
+              تعرض لك هذه الصفحة التعاميم الموجهة إليك.
             </div>
           </div>
 
@@ -259,7 +259,7 @@ export default function AnnouncementsPage() {
                   variant={viewMode === "all" ? "default" : "outline"}
                   onClick={() => setViewMode("all")}
                 >
-                  كل التعميمات
+                  كل التعاميم
                 </Button>
 
                 <Button
