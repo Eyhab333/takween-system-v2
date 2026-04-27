@@ -77,25 +77,47 @@ const DISCIPLINARY_SHEET = {
   range: "A:U",
 };
 
+function cleanEnvValue(value?: string) {
+  return String(value ?? "")
+    .trim()
+    .replace(/^["']|["']$/g, "");
+}
+
+function normalizePrivateKey(value?: string) {
+  return cleanEnvValue(value).replace(/\\n/g, "\n");
+}
+
+function assertValidPrivateKey(privateKey: string, envName: string) {
+  if (!privateKey.includes("-----BEGIN PRIVATE KEY-----")) {
+    throw new Error(`${envName} غير صحيح: missing BEGIN PRIVATE KEY`);
+  }
+
+  if (!privateKey.includes("-----END PRIVATE KEY-----")) {
+    throw new Error(`${envName} غير صحيح: missing END PRIVATE KEY`);
+  }
+}
+
 function getAdminApp() {
   if (admin.apps.length) return admin.app();
 
-  const projectId =
+  const projectId = cleanEnvValue(
     process.env.FIREBASE_PROJECT_ID ||
-    process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID;
+      process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID,
+  );
 
-  const clientEmail =
-    process.env.FIREBASE_CLIENT_EMAIL || process.env.GOOGLE_CLIENT_EMAIL;
+  const clientEmail = cleanEnvValue(
+    process.env.FIREBASE_CLIENT_EMAIL || process.env.GOOGLE_CLIENT_EMAIL,
+  );
 
-  const privateKey = (
-    process.env.FIREBASE_PRIVATE_KEY ||
-    process.env.GOOGLE_PRIVATE_KEY ||
-    ""
-  ).replace(/\n/g, "\n");
+  const privateKey = normalizePrivateKey(
+    process.env.FIREBASE_PRIVATE_KEY || process.env.GOOGLE_PRIVATE_KEY,
+  );
 
   if (!projectId || !clientEmail || !privateKey) {
     throw new Error("Firebase Admin env is missing");
   }
+
+  assertValidPrivateKey(privateKey, "FIREBASE_PRIVATE_KEY");
 
   return admin.initializeApp({
     credential: admin.credential.cert({
@@ -387,8 +409,8 @@ export async function GET(req: NextRequest) {
       }
     }
 
-    const clientEmail = process.env.GOOGLE_CLIENT_EMAIL;
-    const privateKey = process.env.GOOGLE_PRIVATE_KEY?.replace(/\\n/g, "\n");
+    const clientEmail = cleanEnvValue(process.env.GOOGLE_CLIENT_EMAIL);
+    const privateKey = normalizePrivateKey(process.env.GOOGLE_PRIVATE_KEY);
 
     if (!clientEmail || !privateKey) {
       return Response.json(
@@ -396,6 +418,8 @@ export async function GET(req: NextRequest) {
         { status: 500 },
       );
     }
+
+    assertValidPrivateKey(privateKey, "GOOGLE_PRIVATE_KEY");
 
     const gAuth = new google.auth.GoogleAuth({
       credentials: {
