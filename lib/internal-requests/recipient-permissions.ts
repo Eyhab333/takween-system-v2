@@ -168,7 +168,7 @@ const RAWDA3_STAFF: RequestRecipientKey[] = [
 const RAWDA4_STAFF: RequestRecipientKey[] = [
   //  طاقم الروضة الرابعة 
   "rawda4_h_alshaya",    
-"rawda4_m_alfaraj",    
+    
 "rawda4_mm_almousa",   
 "rawda4_L_altayar",    
 "rawda4_n_almaimouni", 
@@ -199,6 +199,9 @@ const basePermissions: Partial<Record<RequestRecipientKey, RequestRecipientKey[]
   platforms: ["ceo"],
   collector: ["ceo"],
   secretary: ["ceo"],
+  edu_platforms: ["ceo"],
+
+
 
   projects: ["ceo", "maintenance"],
   maintenance: ["projects"],

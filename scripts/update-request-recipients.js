@@ -65,11 +65,18 @@ const RECIPIENTS = [
   { key: "rawda3_ceo",          label: "مديرة الروضة الثالثة",    number: 23, email: "s.alnafea@qz.org.sa" },
   { key: "rawda4_ceo",          label: "مديرة الروضة الرابعة",    number: 24, email: "n.alhamiyn@qz.org.sa" },
   { key: "media_programs",      label: "البرامج المصورة",         number: 25, email: "m.alfrraj@qz.org.sa" },
+  { key: "edu_platforms",       label: "المنصات التعليمية",       number: 26, email: "m.alfaraj@qz.org.sa" },
+
+
+
+
+
+
 
   // المشرفين الثلاثة
-  { key: "alshaya_supervisor",      label: "مشرف الإنجليزي",      number: 26, email: "n-alshaya@qz.org.sa" },
-  { key: "altariqii_supervisor",      label: "مشرف الرياضيات",    number: 27, email: "k-altariqii@qz.org.sa" },
-  { key: "sayed_supervisor",      label: "مشرف لغتي",       number: 28, email: "s.sayed@qz.org.sa" },
+  { key: "alshaya_supervisor",        label: "مشرف الإنجليزي",      number: 144, email: "n-alshaya@qz.org.sa" },
+  { key: "altariqii_supervisor",      label: "مشرف الرياضيات",     number: 27, email: "k-altariqii@qz.org.sa" },
+  { key: "sayed_supervisor",          label: "مشرف لغتي",           number: 28, email: "s.sayed@qz.org.sa" },
 
 
 
@@ -209,7 +216,7 @@ const RECIPIENTS = [
 
 // الروضة الرابعة 14
   { key: "rawda4_h_alshaya",     label: "حصه عبدالرزاق احمد الشايع",              number: 143, email: "h.alshaya@qz.org.sa" },
-  { key: "rawda4_m_alfaraj",     label: "ميمونة أحمد فهد الجوير",              number: 144, email: "m.alfaraj@qz.org.sa" },
+  
   { key: "rawda4_mm_almousa",     label: "مشاعل محمد شايع الموسى",              number: 145, email: "mm.almousa@qz.org.sa" },
   { key: "rawda4_L_altayar",     label: "لمى عبدالعزيز عثمان الطيار",              number: 146, email: "L.altayar@qz.org.sa" },
   { key: "rawda4_n_almaimouni",     label: "نوير هلال سعدي الميموني",              number: 147, email: "n.almaimouni@qz.org.sa" },
