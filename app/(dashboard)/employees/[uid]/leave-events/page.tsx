@@ -8,16 +8,12 @@ import { ArrowRight } from "lucide-react";
 import { doc, getDoc } from "firebase/firestore";
 
 import { db } from "@/lib/firebase";
-import { getEmployeeSectionConfig } from "@/lib/employee-sections";
-import EmployeeSectionDataCard from "@/components/employee/EmployeeSectionDataCard";
 import { Button } from "@/components/ui/button";
+import EmployeeLeaveEventsPanel from "@/components/employee/EmployeeLeaveEventsPanel";
 
-export default function MyFileSectionPage() {
-  const params = useParams<{ uid: string; section: string }>();
+export default function EmployeeLeaveEventsPage() {
+  const params = useParams<{ uid: string }>();
   const uid = params?.uid;
-  const section = params?.section;
-
-  const sectionConfig = getEmployeeSectionConfig(section || "");
 
   const [nationalId, setNationalId] = useState<string | null>(null);
   const [loadingUser, setLoadingUser] = useState(true);
@@ -63,22 +59,9 @@ export default function MyFileSectionPage() {
     };
   }, [uid]);
 
-  if (!sectionConfig) {
-    return (
-      <div className="max-w-4xl mx-auto grid gap-4">
-        <div className="text-sm text-red-600">هذا القسم غير موجود.</div>
-        <div>
-          <Link href={`/employees/${uid}/my-file`}>
-            <Button variant="outline">رجوع إلى ملفي</Button>
-          </Link>
-        </div>
-      </div>
-    );
-  }
-
   if (loadingUser) {
     return (
-      <div className="max-w-4xl mx-auto text-sm text-muted-foreground">
+      <div className="max-w-6xl mx-auto text-sm text-muted-foreground">
         جاري تحميل بيانات المستخدم...
       </div>
     );
@@ -86,11 +69,11 @@ export default function MyFileSectionPage() {
 
   if (userError) {
     return (
-      <div className="max-w-4xl mx-auto grid gap-4">
+      <div className="max-w-6xl mx-auto grid gap-4">
         <div className="text-sm text-red-600">{userError}</div>
         <div>
-          <Link href={`/employees/${uid}/my-file`}>
-            <Button variant="outline">رجوع إلى ملفي</Button>
+          <Link href={`/employees/${uid}`}>
+            <Button variant="outline">رجوع</Button>
           </Link>
         </div>
       </div>
@@ -98,12 +81,12 @@ export default function MyFileSectionPage() {
   }
 
   return (
-    <div className="max-w-4xl mx-auto grid gap-4">
+    <div className="max-w-6xl mx-auto grid gap-4">
       <div className="flex items-center justify-between gap-3">
         <div className="space-y-1">
-          <h1 className="text-2xl font-bold">{sectionConfig.title}</h1>
+          <h1 className="text-2xl font-bold">تفاصيل الإجازات والغياب</h1>
           <p className="text-sm text-muted-foreground">
-            {sectionConfig.description}
+           
           </p>
         </div>
 
@@ -115,10 +98,7 @@ export default function MyFileSectionPage() {
         </Link>
       </div>
 
-      <EmployeeSectionDataCard
-        nationalId={nationalId}
-        section={sectionConfig.key}
-      />
+      <EmployeeLeaveEventsPanel nationalId={nationalId} />
     </div>
   );
 }

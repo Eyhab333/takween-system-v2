@@ -1,15 +1,16 @@
 "use client";
 
 import Link from "next/link";
+import Image from "next/image";
+import { useEffect, useMemo, useState } from "react";
 import { usePathname, useRouter } from "next/navigation";
+import { Menu } from "lucide-react";
 
-import useClaimsRole from "@/hooks/use-claims-role";
-import { hasRoleAtLeast, Role } from "@/lib/roles";
+import useClaimsRole, { Role } from "@/hooks/use-claims-role";
 import { Button } from "@/components/ui/button";
-import ThemeToggle from "@/components/layout/ThemeToggle"
+import ThemeToggle from "@/components/layout/ThemeToggle";
 import { NotificationBell } from "@/components/layout/NotificationBell";
-import { useEffect, useState } from "react";
-import { Menu, X } from "lucide-react";
+import EnableNotificationsButton from "../EnableNotificationsButton";
 import {
   Sheet,
   SheetContent,
@@ -17,119 +18,130 @@ import {
   SheetTitle,
   SheetTrigger,
 } from "@/components/ui/sheet";
-import Image from "next/image"
+import { FileText, Megaphone, PlusSquare, User } from "lucide-react";
 
+type NavItem = {
+  label: string;
+  href: string;
+  minRole: Role;
+};
 
-type NavItem = { label: string; href: string; minRole: Role };
+const rolePriority: Record<Role, number> = {
+  employee: 1,
+  hr: 2,
+  chairman: 3,
+  ceo: 4,
+  admin: 5,
+  superadmin: 6,
+};
+
+function hasRoleAtLeast(userRole: Role | null, min: Role) {
+  if (!userRole) return false;
+  return rolePriority[userRole] >= rolePriority[min];
+}
 
 const NAV_ITEMS: NavItem[] = [
   { label: "ملفي", href: "/me", minRole: "employee" },
+  { label: "الطلبات", href: "/dashboard", minRole: "employee" },
+{ label: "التعاميم", href: "/announcements", minRole: "employee" },
+  // { label: "إنشاء طلب", href: "/requests/new", minRole: "employee" },
+  // { label: "الوارد", href: "/requests/inbox", minRole: "employee" },
+  // { label: "الصادر", href: "/requests/outbox", minRole: "employee" },
+  // { label: "الأرشيف", href: "/requests/archive", minRole: "employee" },
 
-  // لوحة التحكم نسيبها HR+ زي ما كانت
-  { label: "الرئيسية ", href: "/dashboard", minRole: "employee" },
-
-  // الطلبات متاحة لكل الموظفين
-  { label: "إنشاء طلب", href: "/requests/new", minRole: "employee" },
-  { label: "الوارد", href: "/requests/inbox", minRole: "employee" },
-  { label: "الصادر", href: "/requests/outbox", minRole: "employee" },
-  { label: "الأرشيف", href: "/requests/archive", minRole: "employee" },
-
-  // ممكن لاحقًا تشيل دول لو حابب
-  // { label: "الشهادات", href: "/certificates", minRole: "hr" },
-  // { label: "التعميمات", href: "/announcements", minRole: "hr" },
+  
+  { label: "إنشاء تعميم", href: "/announcements/new", minRole: "superadmin" },
 ];
 
-
 export default function AppShell({ children }: { children: React.ReactNode }) {
-  // ✅ كل الـ hooks في الأول
   const { role, uid, loading } = useClaimsRole();
   const pathname = usePathname();
   const router = useRouter();
   const [mobileOpen, setMobileOpen] = useState(false);
 
-  const isHrOrAbove = hasRoleAtLeast(role, "employee");
-  //const isAnnouncementsPath = pathname?.startsWith("/announcements");
-  // ❗ تعريف المسارات الممنوعة على الموظف العادي فقط
-  const isForbiddenHrPathForNonHr = (() => {
+  const isHrOrAbove = hasRoleAtLeast(role, "hr");
+  const isSuperadmin = hasRoleAtLeast(role, "superadmin");
+  const ownEmployeeRoot = uid ? `/employees/${uid}` : null;
+
+  const isForbiddenPath = useMemo(() => {
     if (!pathname) return false;
 
-    // لو هو HR أصلاً يبقى مفيش منع
-    if (isHrOrAbove) return false;
-
-    // لوحة التحكم
-    //if (pathname.startsWith("/dashboard")) return true;
-
-    // صفحة قائمة الموظفين العامة
-    if (pathname === "/certificates") return true;
-
-    // التعميمات
+    // superadmin only
     if (
-      pathname === "/announcements" ||
-      pathname.startsWith("/announcements/")
+      (pathname === "/announcements/new" ||
+        pathname.startsWith("/announcements/new/")) &&
+      !isSuperadmin
     ) {
       return true;
     }
 
-    // مسارات /employees/[id]
-    if (pathname.startsWith("/employees/")) {
-      // لو لسه مش عارفين uid، خليك حذر واعتبره ممنوع مؤقتاً
-      if (!uid) return true;
-
-      const ownPath = `/employees/${uid}`;
-
-      // دي صفحة الموظف نفسه → مسموحة
-      if (pathname === ownPath) return false;
-
-      // أي موظف تاني → ممنوع
+    // certificates for HR+
+    if (pathname === "/certificates" && !isHrOrAbove) {
       return true;
     }
 
-    return false;
-  })();
+    // صفحات الموظفين
+    if (pathname.startsWith("/employees/")) {
+      // HR+ مسموح لهم
+      if (isHrOrAbove) return false;
 
-  // 🔁 الريديركت في useEffect (بعد اكتمال الـ loading)
+      // غير مسجل أو لا نملك uid
+      if (!uid || !ownEmployeeRoot) return true;
+
+      // منع الموظف من الدخول إلى صفحات موظف آخر فقط
+      if (!pathname.startsWith(ownEmployeeRoot)) {
+        return true;
+      }
+    }
+
+    return false;
+  }, [pathname, isSuperadmin, isHrOrAbove, uid, ownEmployeeRoot]);
+
   useEffect(() => {
     if (loading) return;
 
-    if (isForbiddenHrPathForNonHr) {
+    if (isForbiddenPath) {
       if (uid) {
         router.replace(`/employees/${uid}`);
       } else {
         router.replace("/login");
       }
     }
-  }, [loading, isForbiddenHrPathForNonHr, uid, router]);
+  }, [loading, isForbiddenPath, uid, router]);
 
-  // ⏳ لو لسه بنحمّل بيانات الدور/uid
-  if (loading) {
-    return null;
-  }
-
-  // 🛑 لو المسار ممنوع على الموظف العادي، ما نرندرش حاجة لحد ما الريديركت يحصل
-  if (isForbiddenHrPathForNonHr) {
-    return null;
-  }
+  if (loading) return null;
+  if (isForbiddenPath) return null;
 
   const items = NAV_ITEMS.filter((item) => hasRoleAtLeast(role, item.minRole));
 
+  const bottomNavItems = items.slice(0, 3); // Show only the top 3 items in the bottom nav
+
+  function getBottomNavIcon(href: string) {
+    if (href === "/me") return User;
+    if (href === "/dashboard") return FileText;
+    if (href === "/announcements") return Megaphone;
+    if (href === "/announcements/new") return PlusSquare;
+    return FileText;
+  }
+
   return (
     <div className="min-h-screen grid md:grid-cols-[240px_1fr]">
-      {/* Sidebar */}
       <aside className="hidden md:block border-l">
-        <div className="p-4 space-y-2">
+        <div className="space-y-2 p-4">
           {items.map((it) => {
-            const active =
-              pathname === it.href || pathname?.startsWith(it.href + "/");
-
             const targetHref =
               it.href === "/me" && uid ? `/employees/${uid}` : it.href;
+
+            const active =
+              pathname === targetHref || pathname?.startsWith(`${targetHref}/`);
 
             return (
               <Link
                 key={it.href}
                 href={targetHref}
-                className={`block rounded px-3 py-2 text-sm ${active ? "bg-muted font-semibold" : "hover:bg-muted"
-                  }`}
+                className={`block rounded px-3 py-2 text-sm ${
+                  active ? "bg-muted font-semibold" : "hover:bg-muted"
+                }`}
               >
                 {it.label}
               </Link>
@@ -144,24 +156,26 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
               router.replace("/login");
             }}
           >
-            <Button type="submit" variant="outline" className="w-full mt-4">
+            <EnableNotificationsButton />
+            <Button type="submit" variant="outline" className="mt-4 w-full">
               تسجيل الخروج
             </Button>
           </form>
         </div>
       </aside>
 
-      {/* Header للموبايل + المحتوى */}
       <div>
         <header className="sticky top-0 z-10 border-b bg-background/80 backdrop-blur">
-          <div className="container mx-auto px-4 h-14 flex items-center justify-between">
-            {/* Left: Hamburger + Logo */}
+          <div className="container mx-auto flex h-14 items-center justify-between px-4">
             <div className="flex items-center gap-2">
-              {/* Hamburger (mobile only) */}
               <div className="md:hidden">
                 <Sheet open={mobileOpen} onOpenChange={setMobileOpen}>
                   <SheetTrigger asChild>
-                    <Button variant="outline" size="icon" aria-label="فتح القائمة">
+                    <Button
+                      variant="outline"
+                      size="icon"
+                      aria-label="فتح القائمة"
+                    >
                       <Menu className="h-5 w-5" />
                     </Button>
                   </SheetTrigger>
@@ -171,8 +185,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
                       <SheetTitle>القائمة</SheetTitle>
                     </SheetHeader>
 
-                    {/* Header داخل الـ Drawer */}
-                    <div className="flex items-center justify-between border-b px-4 h-14">
+                    <div className="flex h-14 items-center justify-between border-b px-4">
                       <button
                         type="button"
                         onClick={() => {
@@ -191,33 +204,29 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
                           className="h-15 w-auto object-contain"
                         />
                       </button>
-
-                      {/* <Button
-                        variant="ghost"
-                        size="icon"
-                        aria-label="إغلاق"
-                        onClick={() => setMobileOpen(false)}
-                      >
-                        <X className="h-5 w-5" />
-                      </Button> */}
                     </div>
 
-
-                    <div className="p-4 space-y-2">
+                    <div className="space-y-2 p-4">
                       {items.map((it) => {
                         const targetHref =
-                          it.href === "/me" && uid ? `/employees/${uid}` : it.href;
+                          it.href === "/me" && uid
+                            ? `/employees/${uid}`
+                            : it.href;
 
                         const active =
-                          pathname === it.href || pathname?.startsWith(it.href + "/");
+                          pathname === targetHref ||
+                          pathname?.startsWith(`${targetHref}/`);
 
                         return (
                           <Link
                             key={it.href}
                             href={targetHref}
                             onClick={() => setMobileOpen(false)}
-                            className={`block rounded px-3 py-2 text-sm ${active ? "bg-muted font-semibold" : "hover:bg-muted"
-                              }`}
+                            className={`block rounded px-3 py-2 text-sm ${
+                              active
+                                ? "bg-muted font-semibold"
+                                : "hover:bg-muted"
+                            }`}
                           >
                             {it.label}
                           </Link>
@@ -233,7 +242,12 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
                           router.replace("/login");
                         }}
                       >
-                        <Button type="submit" variant="outline" className="w-full mt-4">
+                        <EnableNotificationsButton />
+                        <Button
+                          type="submit"
+                          variant="outline"
+                          className="mt-4 w-full"
+                        >
                           تسجيل الخروج
                         </Button>
                       </form>
@@ -242,9 +256,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
                 </Sheet>
               </div>
 
-              {/* Logo */}
               <div className="flex items-center">
-                {/* Desktop */}
                 <Link href="/dashboard" className="hidden md:flex items-center">
                   <Image
                     src="/logo.png"
@@ -256,10 +268,9 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
                   />
                 </Link>
 
-                {/* Mobile */}
                 <button
                   type="button"
-                  className="md:hidden inline-flex items-center"
+                  className="inline-flex items-center md:hidden"
                   onClick={() => router.push("/dashboard")}
                   aria-label="الذهاب للوحة الرئيسية"
                 >
@@ -273,10 +284,8 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
                   />
                 </button>
               </div>
-
             </div>
 
-            {/* Right: actions */}
             <div className="flex items-center gap-2">
               <NotificationBell />
               <ThemeToggle />
@@ -284,8 +293,38 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
           </div>
         </header>
 
+        <main className="container mx-auto px-4 py-6 pb-24 md:pb-6">
+          {children}
+        </main>
+        <nav className="fixed bottom-0 inset-x-0 z-40 border-t bg-background/95 backdrop-blur md:hidden">
+          <div className="grid grid-cols-3">
+            {bottomNavItems.map((it) => {
+              const targetHref =
+                it.href === "/me" && uid ? `/employees/${uid}` : it.href;
 
-        <main className="container mx-auto px-4 py-6">{children}</main>
+              const active =
+                pathname === targetHref ||
+                pathname?.startsWith(`${targetHref}/`);
+
+              const Icon = getBottomNavIcon(it.href);
+
+              return (
+                <Link
+                  key={it.href}
+                  href={targetHref}
+                  className={`flex min-h-16 flex-col items-center justify-center gap-1 px-2 text-[11px] ${
+                    active
+                      ? "text-primary font-semibold"
+                      : "text-muted-foreground hover:text-foreground"
+                  }`}
+                >
+                  <Icon className="h-5 w-5" />
+                  <span className="truncate">{it.label}</span>
+                </Link>
+              );
+            })}
+          </div>
+        </nav>
       </div>
     </div>
   );

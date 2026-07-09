@@ -30,8 +30,6 @@
 // import RoleGate from "@/components/auth/RoleGate";
 // import EmployeeSectionDataCard from "@/components/employee/EmployeeSectionDataCard";
 
-
-
 // type UserDoc = {
 //   uid: string;
 //   name?: string;
@@ -314,7 +312,6 @@
 //   }
 // }
 
-
 //   async function removeCertificate(id: string) {
 //     try {
 //       await auth.currentUser?.getIdToken(true);
@@ -424,7 +421,7 @@
 //           <Info label="UID" value={user.uid} mono />
 //         </CardContent>
 //       </Card> */}
-  
+
 //       {/* 🟦 بيانات الموظف من Google Sheets */}
 //       <EmployeeSectionDataCard
 //       nationalId={user.personalInfo?.nationalId}
@@ -717,7 +714,13 @@
 import Link from "next/link";
 import { useParams } from "next/navigation";
 import { ChevronLeft, FileText, Briefcase, FolderOpen } from "lucide-react";
-
+import {
+  BadgeInfo,
+  CalendarDays,
+  PlaneTakeoff,
+  ShieldAlert,
+  Wallet,
+} from "lucide-react";
 import {
   Card,
   CardHeader,
@@ -740,24 +743,43 @@ const EMPLOYEE_CARDS: EmployeeCard[] = [
   {
     key: "info",
     title: "معلوماتي",
-    description: "عرض بياناتي الوظيفية الأساسية من Google Sheets",
+    description: "عرض بياناتي الوظيفية الأساسية   ",
     href: (uid) => `/employees/${uid}/my-file/info`,
     enabled: true,
-    icon: FileText,
+    icon: BadgeInfo,
   },
   {
-    key: "job",
-    title: "بيانات العمل",
-    description: "قسم إضافي يمكن ربطه لاحقًا من شيت أو مصدر آخر",
-    enabled: false,
-    icon: Briefcase,
+    key: "attendance",
+    title: "إجمالي الغياب والحسومات",
+    description: "",
+    href: (uid) => `/employees/${uid}/my-file/attendance`,
+    enabled: true,
+    icon: CalendarDays,
   },
   {
-    key: "documents",
-    title: "مستنداتي",
-    description: "قسم إضافي للمستندات أو أي معلومات أخرى",
-    enabled: false,
-    icon: FolderOpen,
+    key: "leave-events",
+    title: "تفاصيل الإجازات والغياب",
+    description: "  ",
+    href: (uid) => `/employees/${uid}/leave-events`,
+    enabled: true,
+    icon: PlaneTakeoff,
+  },
+
+  {
+    key: "disciplinary-events",
+    title: "الحسومات",
+    description: " ",
+    href: (uid) => `/employees/${uid}/disciplinary-events`,
+    enabled: true,
+    icon: ShieldAlert,
+  },
+  {
+    key: "salary-summary",
+    title: "كشف الراتب",
+    description: "صافي الراتب والبدلات والخصومات",
+    href: (uid: string) => `/employees/${uid}/salary-summary`,
+    enabled: true,
+    icon: Wallet,
   },
 ];
 
@@ -783,7 +805,9 @@ export default function EmployeeHomePage() {
           return (
             <Card
               key={item.key}
-              className={item.enabled ? "transition hover:shadow-md" : "opacity-70"}
+              className={
+                item.enabled ? "transition hover:shadow-md" : "opacity-70"
+              }
             >
               <CardHeader className="space-y-3">
                 <div className="flex items-start justify-between gap-3">

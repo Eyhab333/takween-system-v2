@@ -4,9 +4,12 @@ export const dynamic = "force-dynamic";
 import { NextRequest } from "next/server";
 import { initializeApp, getApps, cert } from "firebase-admin/app";
 import { getAuth } from "firebase-admin/auth";
-import { getFirestore, Timestamp } from "firebase-admin/firestore";
+import { getFirestore, Timestamp, WriteBatch } from "firebase-admin/firestore";
 
-const HR_ROLES = ["hr", "chairman", "ceo", "admin", "superadmin"] as const;
+type Requester = {
+  uid: string;
+  role: string;
+};
 
 function getAdminServices() {
   if (!getApps().length) {
@@ -21,7 +24,7 @@ function getAdminServices() {
 
     if (!projectId || !clientEmail || !privateKey) {
       throw new Error(
-        "Missing FIREBASE_PROJECT_ID / FIREBASE_CLIENT_EMAIL / FIREBASE_PRIVATE_KEY"
+        "Missing FIREBASE_PROJECT_ID / FIREBASE_CLIENT_EMAIL / FIREBASE_PRIVATE_KEY",
       );
     }
 
@@ -40,10 +43,9 @@ function getAdminServices() {
   };
 }
 
-async function getRequester(req: NextRequest) {
+async function getRequester(req: NextRequest): Promise<Requester | null> {
   const { auth } = getAdminServices();
 
-  // 1) session cookie (لو موجود)
   const sessionCookie = req.cookies.get("session")?.value;
   if (sessionCookie) {
     const decoded = await auth.verifySessionCookie(sessionCookie, true);
@@ -53,11 +55,10 @@ async function getRequester(req: NextRequest) {
     };
   }
 
-  // 2) Bearer token
   const authHeader = req.headers.get("authorization") || "";
-  const m = authHeader.match(/^Bearer\s+(.+)$/i);
-  if (m?.[1]) {
-    const decoded = await auth.verifyIdToken(m[1], true);
+  const match = authHeader.match(/^Bearer\s+(.+)$/i);
+  if (match?.[1]) {
+    const decoded = await auth.verifyIdToken(match[1], true);
     return {
       uid: decoded.uid,
       role: (decoded.role as string | undefined) || "employee",
@@ -95,83 +96,128 @@ async function resolveAudienceUserIds(audTokens: string[]) {
     return Array.from(uids);
   }
 
-  const { schools, units, roles, tags, schoolTypes } =
-    parseAudience(audTokens);
+  const { schools, units, roles, tags, schoolTypes } = parseAudience(audTokens);
+  const jobs: Promise<FirebaseFirestore.QuerySnapshot>[] = [];
 
-  const queries = [];
+  for (const school of schools) {
+    jobs.push(db.collection("users").where("schoolKey", "==", school).get());
+  }
 
-  for (const sk of schools)
-    queries.push(db.collection("users").where("schoolKey", "==", sk));
-  for (const u of units)
-    queries.push(db.collection("users").where("unit", "==", u));
-  for (const r of roles)
-    queries.push(db.collection("users").where("role", "==", r));
-  for (const t of tags)
-    queries.push(db.collection("users").where("tags", "array-contains", t));
-  for (const st of schoolTypes)
-    queries.push(db.collection("users").where("schoolType", "==", st));
+  for (const unit of units) {
+    jobs.push(db.collection("users").where("unit", "==", unit).get());
+  }
 
-  const snaps = await Promise.all(queries.map((q) => q.get()));
-  snaps.forEach((s) => s.forEach((d) => uids.add(d.id)));
+  for (const role of roles) {
+    jobs.push(db.collection("users").where("role", "==", role).get());
+  }
+
+  for (const tag of tags) {
+    jobs.push(db.collection("users").where("tags", "array-contains", tag).get());
+  }
+
+  for (const schoolType of schoolTypes) {
+    jobs.push(
+      db.collection("users").where("schoolType", "==", schoolType).get(),
+    );
+  }
+
+  const snaps = await Promise.all(jobs);
+  for (const snap of snaps) {
+    snap.forEach((d) => uids.add(d.id));
+  }
 
   return Array.from(uids);
+}
+
+async function commitNotificationBatches(params: {
+  userIds: string[];
+  annId: string;
+  title: string;
+}) {
+  const { db } = getAdminServices();
+
+  const nowMs = Date.now();
+  const nowTs = Timestamp.fromMillis(nowMs);
+
+  let sent = 0;
+  let batch: WriteBatch = db.batch();
+  let count = 0;
+
+  for (const uid of params.userIds) {
+    const ref = db.collection("users").doc(uid).collection("notifications").doc();
+
+    batch.set(ref, {
+      title: "تعميم جديد",
+      body: params.title,
+      type: "announcement",
+      link: "/announcements",
+      createdAt: nowTs,
+      createdAtMs: nowMs,
+      read: false,
+      annId: params.annId,
+    });
+
+    count += 1;
+    sent += 1;
+
+    if (count >= 400) {
+      await batch.commit();
+      batch = db.batch();
+      count = 0;
+    }
+  }
+
+  if (count > 0) {
+    await batch.commit();
+  }
+
+  return sent;
 }
 
 export async function POST(req: NextRequest) {
   try {
     const requester = await getRequester(req);
+
     if (!requester) {
       return Response.json({ error: "Unauthorized" }, { status: 401 });
     }
-    if (!HR_ROLES.includes(requester.role as any)) {
+
+    if (requester.role !== "superadmin") {
       return Response.json({ error: "Forbidden" }, { status: 403 });
     }
 
-    const { title, audTokens, annId } = await req.json();
-    if (!title || !Array.isArray(audTokens) || !annId) {
+    const body = await req.json();
+    const annId = String(body?.annId || "").trim();
+    const title = String(body?.title || "").trim();
+    const audTokens = Array.isArray(body?.audTokens)
+      ? body.audTokens.filter((x: unknown) => typeof x === "string")
+      : [];
+
+    if (!annId || !title || audTokens.length === 0) {
       return Response.json(
-        { error: "Missing title/audTokens/annId" },
-        { status: 400 }
+        { error: "Missing annId/title/audTokens" },
+        { status: 400 },
       );
     }
 
-    const { db } = getAdminServices();
     const userIds = await resolveAudienceUserIds(audTokens);
 
     if (userIds.length === 0) {
       return Response.json({ ok: true, sent: 0 });
     }
 
-    const nowMs = Date.now();
-    const nowTs = Timestamp.fromMillis(nowMs);
+    const sent = await commitNotificationBatches({
+      userIds,
+      annId,
+      title,
+    });
 
-    const batch = db.batch();
-    for (const uid of userIds) {
-      const ref = db
-        .collection("users")
-        .doc(uid)
-        .collection("notifications")
-        .doc();
-
-      batch.set(ref, {
-        title: "تعميم جديد",
-        body: title,
-        type: "announcement",
-        link: "/announcements",
-        createdAt: nowTs,
-        createdAtMs: nowMs,
-        read: false,
-        annId,
-      });
-    }
-
-    await batch.commit();
-    return Response.json({ ok: true, sent: userIds.length });
+    return Response.json({ ok: true, sent });
   } catch (e: any) {
     console.error("fanout-announcement error:", e);
     return Response.json(
       { error: e?.message || "Fanout failed" },
-      { status: 500 }
+      { status: 500 },
     );
   }
 }
