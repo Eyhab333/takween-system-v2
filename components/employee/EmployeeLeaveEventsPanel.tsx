@@ -197,30 +197,11 @@ export default function EmployeeLeaveEventsPanel({
         <CardHeader>
           <CardTitle>الفلاتر</CardTitle>
         </CardHeader>
-        <CardContent className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
-          <div className="grid gap-2">
-            <div className="text-xs text-muted-foreground">السنة</div>
-            <Select value={year} onValueChange={setYear}>
-              <SelectTrigger>
-                <SelectValue placeholder="اختر السنة" />
-              </SelectTrigger>
-              <SelectContent>
-                {yearOptions.map((y) => (
-                  <SelectItem key={y} value={y}>
-                    {y === "all" ? "كل السنوات" : y}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
 
+        <CardContent className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
           <div className="grid gap-2">
             <div className="text-xs text-muted-foreground">الشهر</div>
-            <Select
-              value={month}
-              onValueChange={setMonth}
-              disabled={year === "all"}
-            >
+            <Select value={month} onValueChange={setMonth}>
               <SelectTrigger>
                 <SelectValue placeholder="اختر الشهر" />
               </SelectTrigger>
@@ -256,7 +237,6 @@ export default function EmployeeLeaveEventsPanel({
               type="button"
               variant="outline"
               onClick={() => {
-                setYear("all");
                 setMonth("all");
                 setLeaveType("all");
               }}
@@ -324,7 +304,6 @@ export default function EmployeeLeaveEventsPanel({
           {!loading && !error && events.length > 0 && (
             <EmployeeLeaveEventsTable events={events as LeaveEvent[]} />
           )}
-
         </CardContent>
       </Card>
     </div>

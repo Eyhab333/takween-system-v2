@@ -719,6 +719,7 @@ import {
   CalendarDays,
   PlaneTakeoff,
   ShieldAlert,
+  Wallet,
 } from "lucide-react";
 import {
   Card,
@@ -756,22 +757,30 @@ const EMPLOYEE_CARDS: EmployeeCard[] = [
     icon: CalendarDays,
   },
   {
-  key: "leave-events",
-  title: "تفاصيل الإجازات والغياب",
-  description: "  ",
-  href: (uid) => `/employees/${uid}/leave-events`,
-  enabled: true,
-  icon: PlaneTakeoff,
-},
-  
+    key: "leave-events",
+    title: "تفاصيل الإجازات والغياب",
+    description: "  ",
+    href: (uid) => `/employees/${uid}/leave-events`,
+    enabled: true,
+    icon: PlaneTakeoff,
+  },
+
   {
-  key: "disciplinary-events",
-  title: "الحسومات",
-  description: " ",
-  href: (uid) => `/employees/${uid}/disciplinary-events`,
-  enabled: true,
-  icon: ShieldAlert,
-},
+    key: "disciplinary-events",
+    title: "الحسومات",
+    description: " ",
+    href: (uid) => `/employees/${uid}/disciplinary-events`,
+    enabled: true,
+    icon: ShieldAlert,
+  },
+  {
+    key: "salary-summary",
+    title: "كشف الراتب",
+    description: "صافي الراتب والبدلات والخصومات",
+    href: (uid: string) => `/employees/${uid}/salary-summary`,
+    enabled: true,
+    icon: Wallet,
+  },
 ];
 
 export default function EmployeeHomePage() {
