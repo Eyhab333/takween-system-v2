@@ -71,13 +71,13 @@ async function getAcknowledgedUids(
   const snapshots = acknowledgementRefs.length
     ? await db.getAll(...acknowledgementRefs)
     : [];
-  const result = new Set<string>();
+  const result = new Map<string, string | null>();
   for (const acknowledgement of snapshots) {
     if (!acknowledgement.exists) continue;
     const data = acknowledgement.data() as Record<string, unknown>;
     if (typeof data.version === "string" && data.version !== version) continue;
     const uid = acknowledgement.ref.parent.parent?.id;
-    if (uid) result.add(uid);
+    if (uid) result.set(uid, toIso(data.acknowledgedAt));
   }
   return result;
 }
@@ -101,13 +101,19 @@ export async function GET(
 
     const document = documentSnapshot.data() as Record<string, unknown>;
     const employees = await getTargetEmployees();
-    const acknowledgedUids = await getAcknowledgedUids(
+    const acknowledgementDates = await getAcknowledgedUids(
       employees,
       documentId,
       String(document.version || ""),
     );
-    const acknowledgedEmployees = employees.filter((employee) => acknowledgedUids.has(employee.uid));
-    const pendingEmployees = employees.filter((employee) => !acknowledgedUids.has(employee.uid));
+    const acknowledgedUids = new Set(acknowledgementDates.keys());
+    const employeeStatuses = employees.map((employee) => ({
+      ...employee,
+      acknowledged: acknowledgedUids.has(employee.uid),
+      acknowledgedAt: acknowledgementDates.get(employee.uid) || null,
+    }));
+    const acknowledgedEmployees = employeeStatuses.filter((employee) => employee.acknowledged);
+    const pendingEmployees = employeeStatuses.filter((employee) => !employee.acknowledged);
 
     return Response.json(
       {
@@ -121,6 +127,7 @@ export async function GET(
         totalTargetEmployees: employees.length,
         acknowledgedCount: acknowledgedEmployees.length,
         pendingCount: pendingEmployees.length,
+        employeeStatuses,
         acknowledgedEmployees,
         pendingEmployees,
       },

@@ -1,7 +1,7 @@
 "use client";
 
 import { FormEvent, useCallback, useEffect, useState } from "react";
-import { FileText, Users } from "lucide-react";
+import { CheckCircle2, Clock3, FileText, Users } from "lucide-react";
 import { toast } from "sonner";
 import { auth } from "@/lib/firebase";
 import { Button } from "@/components/ui/button";
@@ -28,7 +28,13 @@ type ProgressDetail = {
   totalTargetEmployees: number;
   acknowledgedCount: number;
   pendingCount: number;
-  pendingEmployees: Array<{ uid: string; name: string; email: string; role: string }>;
+  employeeStatuses: Array<{
+    uid: string;
+    name: string;
+    role: string;
+    acknowledged: boolean;
+    acknowledgedAt: string | null;
+  }>;
 };
 
 export default function JobComplianceAdminPanel() {
@@ -39,6 +45,7 @@ export default function JobComplianceAdminPanel() {
   const [updatingId, setUpdatingId] = useState<string | null>(null);
   const [selectedProgress, setSelectedProgress] = useState<ProgressDetail | null>(null);
   const [progressLoadingId, setProgressLoadingId] = useState<string | null>(null);
+  const [employeeFilter, setEmployeeFilter] = useState<"all" | "acknowledged" | "pending">("all");
 
   const loadDocuments = useCallback(async () => {
     try {
@@ -165,7 +172,7 @@ export default function JobComplianceAdminPanel() {
         totalTargetEmployees: json.totalTargetEmployees,
         acknowledgedCount: json.acknowledgedCount,
         pendingCount: json.pendingCount,
-        pendingEmployees: json.pendingEmployees || [],
+        employeeStatuses: json.employeeStatuses || [],
       });
     } catch (progressError) {
       console.error(progressError);
@@ -242,14 +249,63 @@ export default function JobComplianceAdminPanel() {
             <CardDescription>المستهدفون: {selectedProgress.totalTargetEmployees} · تم الإقرار: {selectedProgress.acknowledgedCount} · بانتظار الإقرار: {selectedProgress.pendingCount}</CardDescription>
           </CardHeader>
           <CardContent>
-            {selectedProgress.pendingEmployees.length === 0 ? (
-              <div className="text-sm text-muted-foreground">لا يوجد موظفون بانتظار الإقرار.</div>
+            <div className="mb-4 flex flex-wrap gap-2">
+              <Button
+                type="button"
+                size="sm"
+                variant={employeeFilter === "all" ? "default" : "outline"}
+                onClick={() => setEmployeeFilter("all")}
+              >
+                الكل
+              </Button>
+              <Button
+                type="button"
+                size="sm"
+                variant={employeeFilter === "acknowledged" ? "default" : "outline"}
+                onClick={() => setEmployeeFilter("acknowledged")}
+              >
+                تم الإقرار
+              </Button>
+              <Button
+                type="button"
+                size="sm"
+                variant={employeeFilter === "pending" ? "default" : "outline"}
+                onClick={() => setEmployeeFilter("pending")}
+              >
+                بانتظار الإقرار
+              </Button>
+            </div>
+
+            {selectedProgress.employeeStatuses.filter((employee) =>
+              employeeFilter === "all" ||
+              (employeeFilter === "acknowledged" && employee.acknowledged) ||
+              (employeeFilter === "pending" && !employee.acknowledged),
+            ).length === 0 ? (
+              <div className="text-sm text-muted-foreground">لا يوجد موظفون ضمن هذا التصنيف.</div>
             ) : (
               <div className="divide-y rounded-lg border">
-                {selectedProgress.pendingEmployees.map((employee) => (
+                {selectedProgress.employeeStatuses
+                  .filter((employee) =>
+                    employeeFilter === "all" ||
+                    (employeeFilter === "acknowledged" && employee.acknowledged) ||
+                    (employeeFilter === "pending" && !employee.acknowledged),
+                  )
+                  .map((employee) => (
                   <div key={employee.uid} className="p-3 text-sm">
-                    <div className="font-medium">{employee.name || "—"}</div>
-                    <div className="text-xs text-muted-foreground">{employee.email || "—"} · {employee.role || "موظف"}</div>
+                    <div className="flex items-center gap-2 font-medium">
+                      {employee.acknowledged ? (
+                        <CheckCircle2 className="h-4 w-4 text-emerald-600" />
+                      ) : (
+                        <Clock3 className="h-4 w-4 text-amber-600" />
+                      )}
+                      <span>{employee.name || "—"}</span>
+                    </div>
+                    <div className={employee.acknowledged ? "text-xs text-emerald-700" : "text-xs text-muted-foreground"}>
+                      {employee.acknowledged ? "تم الإقرار" : "بانتظار الإقرار"}
+                      {employee.acknowledgedAt
+                        ? ` · ${new Date(employee.acknowledgedAt).toLocaleString("ar-SA")}`
+                        : ""}
+                    </div>
                   </div>
                 ))}
               </div>

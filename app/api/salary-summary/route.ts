@@ -50,6 +50,9 @@ const SALARY_SUMMARY_SHEET = {
   range: "A:R",
 };
 
+const CURRENT_CONTRACT_YEAR_MESSAGE =
+  "No salary summary is available for this employee in the current contract year.";
+
 function getAdminApp() {
   if (admin.apps.length) return admin.app();
 
@@ -351,7 +354,6 @@ export async function GET(req: NextRequest) {
     const { searchParams } = new URL(req.url);
 
     const nationalId = normalizeId(searchParams.get("nationalId"));
-    const yearFilter = normalizeText(searchParams.get("year"));
     const monthFilter = normalizeMonthKey(searchParams.get("month"));
 
     if (!nationalId) {
@@ -418,6 +420,10 @@ export async function GET(req: NextRequest) {
 
     if (sheetRows.length < 2) {
       return Response.json(
+        { error: CURRENT_CONTRACT_YEAR_MESSAGE },
+        { status: 404 },
+      );
+      return Response.json(
         { error: "لا توجد بيانات كافية في شيت ملخص_الراتب_للمنصة" },
         { status: 404 },
       );
@@ -425,11 +431,14 @@ export async function GET(req: NextRequest) {
 
     const allRows = parseSalarySummaryRows(sheetRows, nationalId);
 
-    const filteredRows = allRows.filter((row) => {
-      if (yearFilter && yearFilter !== "all" && row.year !== yearFilter) {
-        return false;
-      }
+    if (allRows.length === 0) {
+      return Response.json(
+        { error: CURRENT_CONTRACT_YEAR_MESSAGE },
+        { status: 404 },
+      );
+    }
 
+    const filteredRows = allRows.filter((row) => {
       if (
         monthFilter &&
         monthFilter !== "all" &&
@@ -441,7 +450,7 @@ export async function GET(req: NextRequest) {
       return true;
     });
 
-    const selected = filteredRows[0] || allRows[0] || null;
+    const selected = filteredRows[0] || null;
 
     const availablePeriods = allRows.map((row) => ({
       year: row.year,

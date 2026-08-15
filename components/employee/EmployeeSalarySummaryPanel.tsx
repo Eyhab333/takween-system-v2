@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import { FileText } from "lucide-react";
 import { auth } from "@/lib/firebase";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
@@ -46,6 +47,13 @@ type SalarySummaryResponse = {
     monthKey: string;
   }[];
 };
+
+const EMPTY_SUMMARY_MESSAGE =
+  "No salary summary is available for this employee yet.";
+const CURRENT_CONTRACT_YEAR_MESSAGE =
+  "No salary summary is available for this employee in the current contract year.";
+const LOAD_ERROR_MESSAGE =
+  "Unable to load the salary summary right now. Please try again later.";
 
 const MONTH_LABELS: Record<string, string> = {
   "1": "يناير",
@@ -96,38 +104,21 @@ export default function EmployeeSalarySummaryPanel({
   const [data, setData] = useState<SalarySummaryResponse | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [emptyState, setEmptyState] = useState(false);
 
-  const [year, setYear] = useState("all");
   const [month, setMonth] = useState("all");
 
   const selected = data?.selected || null;
-
-  const yearOptions = useMemo(() => {
-    const set = new Set<string>();
-
-    for (const item of data?.availablePeriods || []) {
-      if (item.year) set.add(item.year);
-    }
-
-    return Array.from(set).sort((a, b) => Number(b) - Number(a));
-  }, [data]);
 
   const monthOptions = useMemo(() => {
     const map = new Map<string, string>();
 
     for (const item of data?.availablePeriods || []) {
-      if (year !== "all" && item.year !== year) continue;
       if (item.monthKey) map.set(item.monthKey, item.month);
     }
 
     return Array.from(map.entries()).sort(([a], [b]) => Number(a) - Number(b));
-  }, [data, year]);
-
-  useEffect(() => {
-    if (year === "all" && month !== "all") {
-      setMonth("all");
-    }
-  }, [year, month]);
+  }, [data]);
 
   useEffect(() => {
     if (!nationalId) return;
@@ -138,12 +129,14 @@ export default function EmployeeSalarySummaryPanel({
       try {
         setLoading(true);
         setError(null);
+        setEmptyState(false);
 
         const token = await auth.currentUser?.getIdToken();
 
         if (!token) {
           if (!cancelled) {
             setError("لم يتم العثور على توكن تسجيل الدخول");
+            setError(LOAD_ERROR_MESSAGE);
             setLoading(false);
           }
           return;
@@ -151,9 +144,7 @@ export default function EmployeeSalarySummaryPanel({
 
         const params = new URLSearchParams();
         params.set("nationalId", nationalId);
-        params.set("year", year);
-
-        if (year !== "all" && month !== "all") {
+        if (month !== "all") {
           params.set("month", month);
         }
 
@@ -166,6 +157,14 @@ export default function EmployeeSalarySummaryPanel({
         const json = await res.json();
 
         if (!res.ok) {
+          if (res.status === 404) {
+            if (!cancelled) {
+              setEmptyState(true);
+              setError(null);
+            }
+            return;
+          }
+
           if (!cancelled) {
             setError(json?.error || "تعذر تحميل كشف الراتب");
           }
@@ -174,9 +173,13 @@ export default function EmployeeSalarySummaryPanel({
 
         if (!cancelled) {
           setData(json as SalarySummaryResponse);
+          setEmptyState(!json.selected);
         }
       } catch (err) {
         console.error(err);
+        if (!cancelled) {
+          setError(LOAD_ERROR_MESSAGE);
+        }
         if (!cancelled) {
           setError("حدث خطأ أثناء تحميل كشف الراتب");
         }
@@ -188,7 +191,7 @@ export default function EmployeeSalarySummaryPanel({
     return () => {
       cancelled = true;
     };
-  }, [nationalId, year, month]);
+  }, [nationalId, month]);
 
   return (
     <div className="grid gap-4">
@@ -202,7 +205,8 @@ export default function EmployeeSalarySummaryPanel({
             {loading ? "..." : formatCurrency(selected?.netSalary)}
           </div>
 
-          <div className="text-sm text-emerald-900/80">
+          <div className="text-sm text-transparent">
+            <span className="text-emerald-900">اختر الشهر لعرض كشف الراتب.</span>
             {selected
               ? `كشف راتب شهر ${monthLabel(selected.monthKey, selected.month)} ${selected.year}`
               : "اختر الشهر والسنة لعرض كشف الراتب."}
@@ -247,11 +251,23 @@ export default function EmployeeSalarySummaryPanel({
         </CardContent>
       </Card>
 
-      {error && <div className="text-sm text-red-600">{error}</div>}
+      {error && (
+        <div className="text-sm text-red-600">
+          تعذر تحميل ملخص الراتب حاليًا. حاول مرة أخرى لاحقًا.
+        </div>
+      )}
 
-      {!loading && !error && !selected && (
+      {!loading && !error && (emptyState || !selected) && (
         <Card>
-          <CardContent className="p-6 text-sm text-muted-foreground">
+          <CardContent className="grid place-items-center gap-2 p-8 text-center text-transparent">
+            <FileText className="h-8 w-8 text-muted-foreground" />
+            <div className="text-sm font-medium text-foreground">
+              لا يوجد ملخص راتب متاح لهذا الموظف حاليًا.
+            </div>
+            <div className="text-xs text-muted-foreground">
+              سيظهر الملخص هنا بعد تحديث بيانات الراتب.
+            </div>
+            <span className="text-foreground">{EMPTY_SUMMARY_MESSAGE}</span>
             لا يوجد كشف راتب متاح لهذا الموظف حتى الآن.
           </CardContent>
         </Card>
