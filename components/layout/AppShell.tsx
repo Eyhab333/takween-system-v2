@@ -18,7 +18,13 @@ import {
   SheetTitle,
   SheetTrigger,
 } from "@/components/ui/sheet";
-import { FileText, Megaphone, PlusSquare, User } from "lucide-react";
+import {
+  FileText,
+  Megaphone,
+  PlusSquare,
+  ShieldCheck,
+  User,
+} from "lucide-react";
 
 type NavItem = {
   label: string;
@@ -43,13 +49,13 @@ function hasRoleAtLeast(userRole: Role | null, min: Role) {
 const NAV_ITEMS: NavItem[] = [
   { label: "ملفي", href: "/me", minRole: "employee" },
   { label: "الطلبات", href: "/dashboard", minRole: "employee" },
-{ label: "التعاميم", href: "/announcements", minRole: "employee" },
+  { label: "التعاميم", href: "/announcements", minRole: "employee" },
+  { label: "الالتزام الوظيفي", href: "/job-compliance", minRole: "hr" },
   // { label: "إنشاء طلب", href: "/requests/new", minRole: "employee" },
   // { label: "الوارد", href: "/requests/inbox", minRole: "employee" },
   // { label: "الصادر", href: "/requests/outbox", minRole: "employee" },
   // { label: "الأرشيف", href: "/requests/archive", minRole: "employee" },
 
-  
   { label: "إنشاء تعميم", href: "/announcements/new", minRole: "superadmin" },
 ];
 
@@ -76,6 +82,10 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
     }
 
     // certificates for HR+
+    if (pathname === "/job-compliance" && !isHrOrAbove) {
+      return true;
+    }
+
     if (pathname === "/certificates" && !isHrOrAbove) {
       return true;
     }
@@ -120,6 +130,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
     if (href === "/me") return User;
     if (href === "/dashboard") return FileText;
     if (href === "/announcements") return Megaphone;
+    if (href === "/job-compliance") return ShieldCheck;
     if (href === "/announcements/new") return PlusSquare;
     return FileText;
   }

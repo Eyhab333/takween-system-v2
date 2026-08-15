@@ -719,6 +719,7 @@ import {
   CalendarDays,
   PlaneTakeoff,
   ShieldAlert,
+  ShieldCheck,
   Wallet,
 } from "lucide-react";
 import {
@@ -780,6 +781,14 @@ const EMPLOYEE_CARDS: EmployeeCard[] = [
     href: (uid: string) => `/employees/${uid}/salary-summary`,
     enabled: true,
     icon: Wallet,
+  },
+  {
+    key: "job-compliance",
+    title: "الالتزام الوظيفي",
+    description: "السياسات والتعهدات والإقرارات",
+    href: (uid) => `/employees/${uid}/job-compliance`,
+    enabled: true,
+    icon: ShieldCheck,
   },
 ];
 
