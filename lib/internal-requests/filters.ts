@@ -39,10 +39,15 @@ function parseDateInput(v: string): Date | null {
 export function applyRequestFilters(
   items: InternalRequest[],
   filters: RequestsFilters,
-  opts?: { mode?: "inbox" | "outbox" | "archive"; myRecipientKey?: string | null }
+  opts?: {
+    mode?: "inbox" | "outbox" | "archive";
+    myRecipientKey?: string | null;
+    myUid?: string | null;
+  }
 ) {
   const mode = opts?.mode ?? "outbox";
   const myKey = opts?.myRecipientKey ?? null;
+  const myUid = opts?.myUid ?? null;
 
   const fromD = parseDateInput(filters.dateFrom);
   const toD = parseDateInput(filters.dateTo);
@@ -61,12 +66,18 @@ export function applyRequestFilters(
 
     // inbox kind (primary/cc)
     if (mode === "inbox" && filters.inboxKind !== "all") {
-      if (!myKey) return false;
-
-      const isPrimary = (r as any).currentAssigneeKey === myKey;
-      const isCc =
-        Array.isArray((r as any).ccRecipientKeys) &&
-        (r as any).ccRecipientKeys.includes(myKey);
+      const data = r as any;
+      const hasCanonicalAssignee =
+        typeof data.currentAssigneeUid === "string" && !!data.currentAssigneeUid;
+      const hasCanonicalCc = Array.isArray(data.ccUids);
+      const isPrimary = hasCanonicalAssignee
+        ? data.currentAssigneeUid === myUid
+        : !!myKey && data.currentAssigneeKey === myKey;
+      const isCc = hasCanonicalCc
+        ? !!myUid && data.ccUids.includes(myUid)
+        : !!myKey &&
+          Array.isArray(data.ccRecipientKeys) &&
+          data.ccRecipientKeys.includes(myKey);
 
       if (filters.inboxKind === "primary" && !isPrimary) return false;
       if (filters.inboxKind === "cc" && !isCc) return false;

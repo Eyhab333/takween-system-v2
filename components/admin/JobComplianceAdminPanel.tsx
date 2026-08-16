@@ -37,6 +37,8 @@ type ProgressDetail = {
   }>;
 };
 
+type AudienceType = "all" | "unit" | "schoolKey" | "schoolType" | "tags";
+
 export default function JobComplianceAdminPanel() {
   const [documents, setDocuments] = useState<ComplianceDocument[]>([]);
   const [loading, setLoading] = useState(true);
@@ -46,6 +48,7 @@ export default function JobComplianceAdminPanel() {
   const [selectedProgress, setSelectedProgress] = useState<ProgressDetail | null>(null);
   const [progressLoadingId, setProgressLoadingId] = useState<string | null>(null);
   const [employeeFilter, setEmployeeFilter] = useState<"all" | "acknowledged" | "pending">("all");
+  const [audienceType, setAudienceType] = useState<AudienceType>("all");
 
   const loadDocuments = useCallback(async () => {
     try {
@@ -95,6 +98,29 @@ export default function JobComplianceAdminPanel() {
       const acknowledgementControl = form.elements.namedItem("requiresAcknowledgement") as HTMLInputElement;
       formData.set("requiresAcknowledgement", String(acknowledgementControl.checked));
 
+      const audienceValue = String(formData.get("audienceValue") || "").trim();
+      let audTokens: string[] = [];
+
+      if (audienceType === "all") {
+        audTokens = ["all:all"];
+      } else if (audienceType === "tags") {
+        audTokens = audienceValue
+          .split(",")
+          .map((tag) => tag.trim())
+          .filter(Boolean)
+          .map((tag) => `tag:${tag}`);
+      } else if (audienceValue) {
+        audTokens = [`${audienceType}:${audienceValue}`];
+      }
+
+      if (audienceType !== "all" && audTokens.length === 0) {
+        toast.error("يرجى تحديد الفئة المستهدفة");
+        return;
+      }
+
+      formData.set("audienceMode", audienceType === "all" ? "all" : "selected");
+      formData.set("audTokens", JSON.stringify(audTokens));
+
       const response = await fetch("/api/admin/job-compliance", {
         method: "POST",
         headers: { Authorization: `Bearer ${token}` },
@@ -107,6 +133,7 @@ export default function JobComplianceAdminPanel() {
       }
 
       form.reset();
+      setAudienceType("all");
       toast.success("تم رفع مستند الالتزام الوظيفي");
       await loadDocuments();
     } catch (submitError) {
@@ -196,6 +223,33 @@ export default function JobComplianceAdminPanel() {
             <Field label="النسخة" id="version"><Input id="version" name="version" placeholder="v1" required /></Field>
             <Field label="ترتيب العرض" id="sortOrder"><Input id="sortOrder" name="sortOrder" type="number" min="0" defaultValue="0" required /></Field>
             <Field label="ملف PDF" id="file"><Input id="file" name="file" type="file" accept="application/pdf,.pdf" required /></Field>
+            <Field label="الفئة المستهدفة" id="audienceType">
+              <select
+                id="audienceType"
+                value={audienceType}
+                onChange={(event) => setAudienceType(event.target.value as AudienceType)}
+                className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm"
+              >
+                <option value="all">كل الموظفين</option>
+                <option value="unit">حسب الوحدة</option>
+                <option value="schoolKey">حسب المدرسة</option>
+                <option value="schoolType">حسب نوع المدرسة</option>
+                <option value="tags">حسب الوسوم</option>
+              </select>
+            </Field>
+            {audienceType !== "all" && (
+              <Field
+                label={audienceType === "tags" ? "الوسوم المستهدفة" : "قيمة الفئة المستهدفة"}
+                id="audienceValue"
+              >
+                <Input
+                  id="audienceValue"
+                  name="audienceValue"
+                  placeholder={audienceType === "tags" ? "وسم 1, وسم 2" : "أدخل القيمة المطابقة لبيانات الموظف"}
+                  required
+                />
+              </Field>
+            )}
             <label className="flex items-center gap-2 self-end text-sm">
               <input name="requiresAcknowledgement" type="checkbox" defaultChecked />
               يتطلب إقرار

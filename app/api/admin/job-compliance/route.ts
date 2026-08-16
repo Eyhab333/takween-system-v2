@@ -4,6 +4,12 @@ export const dynamic = "force-dynamic";
 import { NextRequest } from "next/server";
 import { FieldValue } from "firebase-admin/firestore";
 import { getAdminServices } from "@/lib/server/firebaseAdmin";
+import {
+  audienceMatchesUser,
+  buildAudienceTokensFromUser,
+  documentAudienceTokens,
+  normalizeAudienceTokens,
+} from "@/lib/audience-tokens";
 
 const MANAGER_ROLES = ["hr", "chairman", "ceo", "admin", "superadmin"] as const;
 const MAX_PDF_SIZE_BYTES = 15 * 1024 * 1024;
@@ -18,6 +24,8 @@ type ComplianceDocument = {
   active: boolean;
   requiresAcknowledgement: boolean;
   sortOrder: number;
+  audienceMode: "all" | "selected";
+  audTokens: string[];
   createdAt: string | null;
   updatedAt: string | null;
   createdByUid: string | null;
@@ -59,6 +67,8 @@ function toDocument(id: string, value: Record<string, unknown>): ComplianceDocum
     active: value.active === true,
     requiresAcknowledgement: value.requiresAcknowledgement !== false,
     sortOrder: typeof value.sortOrder === "number" && Number.isFinite(value.sortOrder) ? value.sortOrder : 0,
+    audienceMode: value.audienceMode === "selected" ? "selected" : "all",
+    audTokens: documentAudienceTokens(value),
     createdAt: toIso(value.createdAt),
     updatedAt: toIso(value.updatedAt),
     createdByUid: typeof value.createdByUid === "string" ? value.createdByUid : null,
@@ -106,6 +116,7 @@ async function getTargetEmployees() {
       name: typeof user.name === "string" ? user.name : typeof user.displayName === "string" ? user.displayName : "",
       email: typeof user.email === "string" ? user.email : "",
       role: typeof user.role === "string" ? user.role : "employee",
+      audTokens: buildAudienceTokensFromUser(user),
     }));
 }
 
@@ -139,7 +150,10 @@ async function getDocumentProgress(document: ComplianceDocument) {
     document.id,
     document.version,
   );
-  const targetEmployees = employees.filter((employee) => !!employee.uid);
+  const targetEmployees = employees.filter(
+    (employee) =>
+      !!employee.uid && audienceMatchesUser(document.audTokens, employee.audTokens),
+  );
   const acknowledgedCount = targetEmployees.filter((employee) => acknowledgedUids.has(employee.uid)).length;
   return {
     totalTargetEmployees: targetEmployees.length,
@@ -183,6 +197,18 @@ export async function POST(req: NextRequest) {
     const version = String(formData.get("version") || "").trim();
     const sortOrder = Number(formData.get("sortOrder"));
     const requiresAcknowledgement = formData.get("requiresAcknowledgement") === "true";
+    const audienceMode = formData.get("audienceMode") === "selected" ? "selected" : "all";
+    let audTokens: string[] = [];
+    try {
+      audTokens = normalizeAudienceTokens(JSON.parse(String(formData.get("audTokens") || "[]")));
+    } catch {
+      return Response.json({ error: "الفئة المستهدفة غير صالحة" }, { status: 400 });
+    }
+
+    if (audienceMode === "all") audTokens = ["all:all"];
+    if (audienceMode === "selected" && audTokens.length === 0) {
+      return Response.json({ error: "يرجى تحديد الفئة المستهدفة" }, { status: 400 });
+    }
     const file = formData.get("file");
 
     if (!title || !category || !version || !Number.isFinite(sortOrder)) {
@@ -217,6 +243,8 @@ export async function POST(req: NextRequest) {
         active: true,
         requiresAcknowledgement,
         sortOrder,
+        audienceMode,
+        audTokens,
         createdAt: FieldValue.serverTimestamp(),
         updatedAt: FieldValue.serverTimestamp(),
         createdByUid: requester.uid,

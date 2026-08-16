@@ -4,6 +4,12 @@ export const dynamic = "force-dynamic";
 import { NextRequest } from "next/server";
 import { FieldValue } from "firebase-admin/firestore";
 import { getAdminServices } from "@/lib/server/firebaseAdmin";
+import {
+  audienceMatchesUser,
+  buildAudienceTokensFromUser,
+  documentAudienceTokens,
+  normalizeAudienceTokens,
+} from "@/lib/audience-tokens";
 
 const MANAGER_ROLES = ["hr", "chairman", "ceo", "admin", "superadmin"] as const;
 
@@ -56,6 +62,7 @@ async function getTargetEmployees() {
       name: typeof user.name === "string" ? user.name : typeof user.displayName === "string" ? user.displayName : "",
       email: typeof user.email === "string" ? user.email : "",
       role: typeof user.role === "string" ? user.role : "employee",
+      audTokens: buildAudienceTokensFromUser(user),
     }));
 }
 
@@ -101,13 +108,16 @@ export async function GET(
 
     const document = documentSnapshot.data() as Record<string, unknown>;
     const employees = await getTargetEmployees();
+    const targetEmployees = employees.filter((employee) =>
+      audienceMatchesUser(documentAudienceTokens(document), employee.audTokens),
+    );
     const acknowledgementDates = await getAcknowledgedUids(
-      employees,
+      targetEmployees,
       documentId,
       String(document.version || ""),
     );
     const acknowledgedUids = new Set(acknowledgementDates.keys());
-    const employeeStatuses = employees.map((employee) => ({
+    const employeeStatuses = targetEmployees.map((employee) => ({
       ...employee,
       acknowledged: acknowledgedUids.has(employee.uid),
       acknowledgedAt: acknowledgementDates.get(employee.uid) || null,
@@ -124,7 +134,7 @@ export async function GET(
           createdAt: toIso(document.createdAt),
           updatedAt: toIso(document.updatedAt),
         },
-        totalTargetEmployees: employees.length,
+        totalTargetEmployees: targetEmployees.length,
         acknowledgedCount: acknowledgedEmployees.length,
         pendingCount: pendingEmployees.length,
         employeeStatuses,
@@ -160,6 +170,18 @@ export async function PATCH(
       if (typeof body[field] === "string" && body[field].trim()) updates[field] = body[field].trim();
     }
     if (typeof body.sortOrder === "number" && Number.isFinite(body.sortOrder)) updates.sortOrder = body.sortOrder;
+    if (body.audienceMode === "all") {
+      updates.audienceMode = "all";
+      updates.audTokens = ["all:all"];
+    }
+    if (body.audienceMode === "selected") {
+      const audTokens = normalizeAudienceTokens(body.audTokens);
+      if (audTokens.length === 0) {
+        return Response.json({ error: "يرجى تحديد الفئة المستهدفة" }, { status: 400 });
+      }
+      updates.audienceMode = "selected";
+      updates.audTokens = audTokens;
+    }
     if (Object.keys(updates).length === 0) return Response.json({ error: "لا توجد تعديلات صالحة" }, { status: 400 });
 
     const { db } = getAdminServices();

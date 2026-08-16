@@ -6,22 +6,14 @@ import { useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { listenInternalRequestById } from "@/lib/internal-requests/firestore";
-import { getRecipientByEmail, getRecipientByKey } from "@/lib/internal-requests/recipients";
+import { getRecipientByKey } from "@/lib/internal-requests/recipients";
 import type { InternalRequest } from "@/lib/internal-requests/types";
-
-type UserMini = {
-  label: string;
-  recipientKey?: string | null;
-  recipientLabel?: string | null;
-  email?: string | null;
-};
 
 export default function RequestPrintPage() {
   const params = useParams<{ id: string }>();
   const id = params?.id;
   const router = useRouter();
 
-  const [userCache] = useState<Record<string, UserMini>>({});
   const [req, setReq] = useState<InternalRequest | null>(null);
 
   useEffect(() => {
@@ -47,13 +39,7 @@ export default function RequestPrintPage() {
     "غير محددة";
 
   const creatorLabel = (() => {
-    const byEmail = req.createdByEmail ? getRecipientByEmail(req.createdByEmail) : undefined;
-    if (byEmail) return byEmail.label;
-
-    const c = userCache[req.createdByUid];
-    if (c?.label) return c.label;
-
-    return "موظف";
+    return (req as any).createdByLabel || req.createdByEmail || "موظف";
   })();
 
   return (

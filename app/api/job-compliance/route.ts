@@ -5,6 +5,11 @@ import { NextRequest } from "next/server";
 import { FieldValue } from "firebase-admin/firestore";
 import { ACTIVE_JOB_COMPLIANCE_RESOURCES } from "@/lib/job-compliance-resources";
 import { getAdminServices } from "@/lib/server/firebaseAdmin";
+import {
+  audienceMatchesUser,
+  buildAudienceTokensFromUser,
+  documentAudienceTokens,
+} from "@/lib/audience-tokens";
 
 const HR_ROLES = ["hr", "chairman", "ceo", "admin", "superadmin"] as const;
 const SIGNED_URL_TTL_MS = 30 * 60 * 1000;
@@ -22,6 +27,7 @@ type ComplianceResource = {
   storagePath: string;
   requiresAcknowledgement: boolean;
   sortOrder: number;
+  audTokens: string[];
 };
 
 function isHrOrAbove(role: string) {
@@ -87,6 +93,7 @@ function asComplianceResource(
     version: String(data.version || ""),
     storagePath: String(data.storagePath || ""),
     requiresAcknowledgement: data.requiresAcknowledgement !== false,
+    audTokens: documentAudienceTokens(data),
     sortOrder:
       typeof data.sortOrder === "number" && Number.isFinite(data.sortOrder)
         ? data.sortOrder
@@ -94,8 +101,14 @@ function asComplianceResource(
   };
 }
 
-async function getEmployeeResources() {
+async function getEmployeeResources(uid: string) {
   const { db } = getAdminServices();
+  const userSnapshot = await db.doc(`users/${uid}`).get();
+  if (!userSnapshot.exists) return [];
+
+  const userTokens = buildAudienceTokensFromUser(
+    userSnapshot.data() as Record<string, unknown>,
+  );
   const snapshot = await db.collection("jobComplianceDocuments").get();
   const managedResources = snapshot.docs.map((document) => ({
     resource: asComplianceResource(
@@ -159,7 +172,7 @@ export async function GET(req: NextRequest) {
       );
     }
 
-    const activeResources = await getEmployeeResources();
+    const activeResources = await getEmployeeResources(uid);
     const { db, storage } = getAdminServices();
     const acknowledgementRefs = activeResources.map((resource) =>
       db.doc(`users/${uid}/jobComplianceAcknowledgements/${resource.key}`),
@@ -236,7 +249,7 @@ export async function POST(req: NextRequest) {
       return noStoreJson({ error: "لا يمكن الإقرار نيابة عن موظف آخر" }, 403);
     }
 
-    const resource = (await getEmployeeResources()).find(
+    const resource = (await getEmployeeResources(uid)).find(
       (item) => item.key === resourceKey,
     );
     if (!resource) {

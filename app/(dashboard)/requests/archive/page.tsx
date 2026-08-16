@@ -41,10 +41,14 @@ export default function ArchivePage() {
   const [created, setCreated] = useState<InternalRequest[]>([]);
   const [assigned, setAssigned] = useState<InternalRequest[]>([]);
   const [cc, setCc] = useState<InternalRequest[]>([]);
+  const [legacyAssigned, setLegacyAssigned] = useState<InternalRequest[]>([]);
+  const [legacyCc, setLegacyCc] = useState<InternalRequest[]>([]);
 
   const [subCreated, setSubCreated] = useState(false);
   const [subAssigned, setSubAssigned] = useState(false);
   const [subCc, setSubCc] = useState(false);
+  const [subLegacyAssigned, setSubLegacyAssigned] = useState(false);
+  const [subLegacyCc, setSubLegacyCc] = useState(false);
 
   const [qText, setQText] = useState("");
   const [filters, setFilters] = useState(defaultRequestsFilters);
@@ -116,23 +120,20 @@ export default function ArchivePage() {
 
     // لو مفيش key خلّص الاشتراكات بدون تعليق
     if (!myRecipientLoaded) return;
-    if (!myRecipientKey) {
-      setAssigned([]);
-      setCc([]);
-      setSubAssigned(true);
-      setSubCc(true);
-      return;
-    }
 
     let unsub2: Unsubscribe | null = null;
     let unsub3: Unsubscribe | null = null;
+    let unsub4: Unsubscribe | null = null;
+    let unsub5: Unsubscribe | null = null;
 
     setSubAssigned(false);
     setSubCc(false);
+    setSubLegacyAssigned(false);
+    setSubLegacyCc(false);
 
     const q2 = query(
       collection(db, "internalRequests"),
-      where("currentAssigneeKey", "==", myRecipientKey),
+      where("currentAssigneeUid", "==", uid),
       where("archived", "==", true),
       orderBy("createdAt", "desc")
     );
@@ -150,7 +151,7 @@ export default function ArchivePage() {
 
     const q3 = query(
       collection(db, "internalRequests"),
-      where("ccRecipientKeys", "array-contains", myRecipientKey),
+      where("ccUids", "array-contains", uid),
       where("archived", "==", true),
       orderBy("createdAt", "desc")
     );
@@ -166,13 +167,67 @@ export default function ArchivePage() {
       () => setSubCc(true)
     );
 
+    if (myRecipientKey) {
+      const q4 = query(
+        collection(db, "internalRequests"),
+        where("currentAssigneeKey", "==", myRecipientKey),
+        where("archived", "==", true),
+        orderBy("createdAt", "desc")
+      );
+      unsub4 = onSnapshot(
+        q4,
+        (snap) => {
+          const list: InternalRequest[] = [];
+          snap.forEach((d) => {
+            const data = d.data() as Record<string, unknown>;
+            if (typeof data.currentAssigneeUid === "string" && data.currentAssigneeUid) {
+              return;
+            }
+            list.push(mapDataToInternalRequest(d.id, data));
+          });
+          setLegacyAssigned(list);
+          setSubLegacyAssigned(true);
+        },
+        () => setSubLegacyAssigned(true)
+      );
+
+      const q5 = query(
+        collection(db, "internalRequests"),
+        where("ccRecipientKeys", "array-contains", myRecipientKey),
+        where("archived", "==", true),
+        orderBy("createdAt", "desc")
+      );
+      unsub5 = onSnapshot(
+        q5,
+        (snap) => {
+          const list: InternalRequest[] = [];
+          snap.forEach((d) => {
+            const data = d.data() as Record<string, unknown>;
+            if (Array.isArray(data.ccUids)) return;
+            list.push(mapDataToInternalRequest(d.id, data));
+          });
+          setLegacyCc(list);
+          setSubLegacyCc(true);
+        },
+        () => setSubLegacyCc(true)
+      );
+    } else {
+      setLegacyAssigned([]);
+      setLegacyCc([]);
+      setSubLegacyAssigned(true);
+      setSubLegacyCc(true);
+    }
+
     return () => {
       unsub2?.();
       unsub3?.();
+      unsub4?.();
+      unsub5?.();
     };
   }, [loading, uid, myRecipientLoaded, myRecipientKey]);
 
-  const subscribed = subCreated && subAssigned && subCc;
+  const subscribed =
+    subCreated && subAssigned && subCc && subLegacyAssigned && subLegacyCc;
 
   const items = useMemo(() => {
     // merge بدون تكرار + ترتيب
@@ -180,6 +235,8 @@ export default function ArchivePage() {
     for (const r of created) m.set(r.id, r);
     for (const r of assigned) if (!m.has(r.id)) m.set(r.id, r);
     for (const r of cc) if (!m.has(r.id)) m.set(r.id, r);
+    for (const r of legacyAssigned) if (!m.has(r.id)) m.set(r.id, r);
+    for (const r of legacyCc) if (!m.has(r.id)) m.set(r.id, r);
 
     const arr = Array.from(m.values());
     arr.sort((a, b) => {
@@ -188,7 +245,7 @@ export default function ArchivePage() {
       return tb - ta;
     });
     return arr;
-  }, [created, assigned, cc]);
+  }, [created, assigned, cc, legacyAssigned, legacyCc]);
 
   const filteredItems = useMemo(() => {
     const afterFilters = applyRequestFilters(items, filters, { mode: "archive", myRecipientKey });

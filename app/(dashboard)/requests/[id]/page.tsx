@@ -31,13 +31,8 @@ import type {
 } from "@/lib/internal-requests/types";
 import {
   getRecipientByKey,
-  getRecipientByEmail,
   type RequestRecipientKey,
 } from "@/lib/internal-requests/recipients";
-import {
-  canSendTo,
-  getVisibleRecipientsForSender,
-} from "@/lib/internal-requests/recipient-permissions";
 
 import { auth, db, storage } from "@/lib/firebase";
 import {
@@ -56,11 +51,34 @@ type UserMini = {
   email?: string | null;
 };
 
+type TargetedForwardRecipient = {
+  label: string;
+  uid: string;
+  role: string | null;
+  orgUnitId: string;
+  positionCode: string;
+  legacyRecipientKey: RequestRecipientKey | null;
+  legacyRecipientNumber: number | null;
+  personTarget: { mode: "PERSON"; uid: string };
+  positionTargets: Array<{
+    mode: "POSITION";
+    orgUnitId: string;
+    positionCode: string;
+    cardinality: "single" | "multiple";
+  }>;
+};
+
+type ForwardRecipientOption = {
+  label: string;
+  uid: string;
+  personTarget?: { mode: "PERSON"; uid: string };
+  positionTargets?: TargetedForwardRecipient["positionTargets"];
+};
+
 const HR_PLUS: ClaimsRole[] = ["hr", "chairman", "ceo", "admin", "superadmin"];
 
 async function fanoutRequestNotification(payload: {
   requestId: string;
-  toRecipientKeys: string[];
   title: string;
   body: string;
   link: string;
@@ -75,7 +93,12 @@ async function fanoutRequestNotification(payload: {
       "Content-Type": "application/json",
       Authorization: `Bearer ${token}`,
     },
-    body: JSON.stringify(payload),
+    body: JSON.stringify({
+      requestId: payload.requestId,
+      title: payload.title,
+      body: payload.body,
+      link: payload.link,
+    }),
   });
 
   if (!res.ok) {
@@ -95,7 +118,6 @@ export default function RequestDetailsPage() {
 
   const {
     uid: myUid,
-    email: myEmail,
     role: myRole,
     loading: claimsLoading,
   } = useClaimsRole();
@@ -114,10 +136,12 @@ export default function RequestDetailsPage() {
   const [commentText, setCommentText] = useState("");
 
   const [forwardOpen, setForwardOpen] = useState(false);
-  const [forwardTargetKey, setForwardTargetKey] = useState<
-    RequestRecipientKey | ""
-  >("");
+  const [forwardTargetUid, setForwardTargetUid] = useState("");
   const [forwardComment, setForwardComment] = useState("");
+  const [forwardTargetedRecipients, setForwardTargetedRecipients] = useState<
+    TargetedForwardRecipient[]
+  >([]);
+  const [forwardTargetingLoaded, setForwardTargetingLoaded] = useState(false);
 
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const [uploadingAtt, setUploadingAtt] = useState(false);
@@ -157,22 +181,69 @@ export default function RequestDetailsPage() {
           return;
         }
 
-        if (!cancelled && myEmail) {
-          const r = getRecipientByEmail(myEmail);
-          setMyRecipientKey((r?.key as RequestRecipientKey) ?? null);
+        if (!myUid) return;
+        const userSnap = await fsGetDoc(fsDoc(db, "users", myUid));
+        const userKey = userSnap.exists()
+          ? ((userSnap.data() as any)?.requestRecipientKey as
+              | RequestRecipientKey
+              | undefined)
+          : null;
+        if (!cancelled) {
+          setMyRecipientKey(userKey ?? null);
         }
       } catch {
-        if (!cancelled && myEmail) {
-          const r = getRecipientByEmail(myEmail);
-          setMyRecipientKey((r?.key as RequestRecipientKey) ?? null);
-        }
+        if (!cancelled) setMyRecipientKey(null);
       }
     })();
 
     return () => {
       cancelled = true;
     };
-  }, [claimsLoading, myEmail]);
+  }, [claimsLoading, myUid]);
+
+  useEffect(() => {
+    if (claimsLoading) return;
+    if (!myUid) {
+      setForwardTargetedRecipients([]);
+      setForwardTargetingLoaded(true);
+      return;
+    }
+
+    let cancelled = false;
+    setForwardTargetingLoaded(false);
+
+    (async () => {
+      try {
+        const user = auth.currentUser;
+        if (!user) throw new Error("No authenticated user");
+        const token = await user.getIdToken();
+        const response = await fetch("/api/internal-requests/targeting", {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        const payload = await response.json();
+        if (
+          !response.ok ||
+          payload?.source !== "engine" ||
+          !Array.isArray(payload?.recipients)
+        ) {
+          throw new Error("Targeting data is unavailable");
+        }
+        if (!cancelled) {
+          setForwardTargetedRecipients(
+            payload.recipients as TargetedForwardRecipient[],
+          );
+        }
+      } catch {
+        if (!cancelled) setForwardTargetedRecipients([]);
+      } finally {
+        if (!cancelled) setForwardTargetingLoaded(true);
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [claimsLoading, myUid]);
 
   useEffect(() => {
     if (!request) return;
@@ -256,16 +327,21 @@ export default function RequestDetailsPage() {
 
   const isOwner = !!myUid && myUid === req.createdByUid;
   const isAssignedToMe =
-    !!myRecipientKey && (req.currentAssigneeKey ?? null) === myRecipientKey;
+    !!myUid &&
+    ((req as any).currentAssigneeUid === myUid ||
+      req.currentAssignee?.uid === myUid ||
+      (!!myRecipientKey && (req.currentAssigneeKey ?? null) === myRecipientKey));
 
   const canAct = !isTerminal && isAssignedToMe;
   const canCancel =
     !isTerminal && isOwner && ["open", "in_progress"].includes(status);
 
-  const forwardTargets = getVisibleRecipientsForSender(myRecipientKey, [
-    myRecipientKey,
-    req.currentAssigneeKey,
-  ]);
+  const forwardTargetSource: ForwardRecipientOption[] = forwardTargetedRecipients;
+  const forwardTargets = forwardTargetSource.filter(
+    (recipient) =>
+      recipient.uid !== myUid &&
+      recipient.uid !== ((req as any).currentAssigneeUid ?? req.currentAssignee?.uid),
+  );
 
   const requestNumberText =
     req.requestNumber ||
@@ -286,11 +362,6 @@ export default function RequestDetailsPage() {
     "—";
 
   const creatorLabel = (() => {
-    const byEmail = req.createdByEmail
-      ? getRecipientByEmail(req.createdByEmail)
-      : undefined;
-    if (byEmail) return byEmail.label;
-
     const c = userCache[req.createdByUid];
     if (c?.label) return c.label;
 
@@ -351,38 +422,6 @@ export default function RequestDetailsPage() {
     return r?.label ?? key;
   }
 
-  function getCreatorRecipientKey(): string | null {
-    const direct = (req as any)?.createdByRecipientKey as string | undefined;
-    if (direct) return direct;
-
-    const cached = userCache[req.createdByUid];
-    if (cached?.recipientKey) return cached.recipientKey;
-
-    const byEmail = req.createdByEmail
-      ? getRecipientByEmail(req.createdByEmail)
-      : null;
-    return byEmail?.key ?? null;
-  }
-
-  function buildNotifKeys(extra?: string[]) {
-    const keys: string[] = [];
-
-    const creatorKey = getCreatorRecipientKey();
-    if (creatorKey) keys.push(creatorKey);
-
-    if (req.currentAssigneeKey) keys.push(req.currentAssigneeKey);
-
-    const ccKeys = Array.isArray((req as any).ccRecipientKeys)
-      ? ((req as any).ccRecipientKeys as string[])
-      : [];
-    keys.push(...ccKeys);
-
-    if (extra?.length) keys.push(...extra);
-
-    const uniq = Array.from(new Set(keys.filter(Boolean)));
-    return myRecipientKey ? uniq.filter((k) => k !== myRecipientKey) : uniq;
-  }
-
   function doComment() {
     if (!myUid) return toast.error("سجّل الدخول مرة أخرى");
     const text = commentText.trim();
@@ -399,16 +438,12 @@ export default function RequestDetailsPage() {
         });
 
         try {
-          const toKeys = buildNotifKeys();
-          if (toKeys.length) {
-            await fanoutRequestNotification({
-              requestId: req.id,
-              toRecipientKeys: toKeys,
-              title: "تعليق على طلب",
-              body: `${creatorLabel}: ${req.title || ""}`,
-              link: `/requests/${req.id}`,
-            });
-          }
+          await fanoutRequestNotification({
+            requestId: req.id,
+            title: "تعليق على طلب",
+            body: `${creatorLabel}: ${req.title || ""}`,
+            link: `/requests/${req.id}`,
+          });
         } catch (e) {
           console.warn("fanout failed:", e);
         }
@@ -425,43 +460,60 @@ export default function RequestDetailsPage() {
 
   function doForward() {
     if (!myUid) return toast.error("سجّل الدخول مرة أخرى");
-    if (!forwardTargetKey) return toast.error("اختر الجهة المُحال إليها");
+    if (!forwardTargetUid) return toast.error("اختر الجهة المُحال إليها");
 
-    if (!canSendTo(myRecipientKey, forwardTargetKey as RequestRecipientKey)) {
-      return toast.error("لا يمكنك إحالة الطلب لهذه الجهة");
+    const selectedTarget = forwardTargets.find(
+      (recipient) => recipient.uid === forwardTargetUid,
+    );
+    if (!selectedTarget) {
+      return toast.error("Forward target is unavailable");
+    }
+    if (!selectedTarget.personTarget) {
+      return toast.error("Forward target is unavailable");
     }
 
     startTransition(async () => {
       try {
-        await performRequestAction({
-          requestId: req.id,
-          actionType: "forwarded",
-          actorUid: myUid,
-          actorRole: (myRole as any) ?? "employee",
-          targetRecipientKey: forwardTargetKey as RequestRecipientKey,
-          targetUid: null,
-          targetRole: null,
-          comment: forwardComment.trim(),
+        const user = auth.currentUser;
+        if (!user) throw new Error("Authentication is required");
+        const token = await user.getIdToken();
+        const positionTarget =
+          selectedTarget.positionTargets
+            ? selectedTarget.positionTargets.find(
+                (target) => target.cardinality === "single",
+              )
+            : null;
+        const response = await fetch("/api/internal-requests/forward", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${token}`,
+          },
+          body: JSON.stringify({
+            requestId: req.id,
+            comment: forwardComment.trim(),
+            target: positionTarget ?? selectedTarget.personTarget,
+          }),
         });
+        if (!response.ok) {
+          const payload = await response.json().catch(() => null);
+          throw new Error(payload?.error || "Forwarding failed");
+        }
 
         try {
-          const toKeys = buildNotifKeys([forwardTargetKey]);
-          if (toKeys.length) {
-            await fanoutRequestNotification({
-              requestId: req.id,
-              toRecipientKeys: toKeys,
-              title: "تمت إحالة طلب",
-              body: `${creatorLabel}: ${req.title || ""}`,
-              link: `/requests/${req.id}`,
-            });
-          }
+          await fanoutRequestNotification({
+            requestId: req.id,
+            title: "تمت إحالة طلب",
+            body: `${creatorLabel}: ${req.title || ""}`,
+            link: `/requests/${req.id}`,
+          });
         } catch (e) {
           console.warn("fanout failed:", e);
         }
 
         toast.success("تمت إحالة الطلب");
         setForwardComment("");
-        setForwardTargetKey("");
+        setForwardTargetUid("");
         setForwardOpen(false);
       } catch (e: any) {
         console.error(e);
@@ -484,21 +536,17 @@ export default function RequestDetailsPage() {
         });
 
         try {
-          const toKeys = buildNotifKeys();
-          if (toKeys.length) {
-            const titleMap: Record<string, string> = {
-              approved: "تم اعتماد الطلب",
-              rejected: "تم رفض الطلب",
-              closed: "تم إغلاق الطلب",
-            };
-            await fanoutRequestNotification({
-              requestId: req.id,
-              toRecipientKeys: toKeys,
-              title: titleMap[type] || "تحديث على الطلب",
-              body: `${creatorLabel}: ${req.title || ""}`,
-              link: `/requests/${req.id}`,
-            });
-          }
+          const titleMap: Record<string, string> = {
+            approved: "تم اعتماد الطلب",
+            rejected: "تم رفض الطلب",
+            closed: "تم إغلاق الطلب",
+          };
+          await fanoutRequestNotification({
+            requestId: req.id,
+            title: titleMap[type] || "تحديث على الطلب",
+            body: `${creatorLabel}: ${req.title || ""}`,
+            link: `/requests/${req.id}`,
+          });
         } catch (e) {
           console.warn("fanout failed:", e);
         }
@@ -532,16 +580,12 @@ export default function RequestDetailsPage() {
         });
 
         try {
-          const toKeys = buildNotifKeys();
-          if (toKeys.length) {
-            await fanoutRequestNotification({
-              requestId: req.id,
-              toRecipientKeys: toKeys,
-              title: "تم إلغاء الطلب",
-              body: `${creatorLabel}: ${req.title || ""}`,
-              link: `/requests/${req.id}`,
-            });
-          }
+          await fanoutRequestNotification({
+            requestId: req.id,
+            title: "تم إلغاء الطلب",
+            body: `${creatorLabel}: ${req.title || ""}`,
+            link: `/requests/${req.id}`,
+          });
         } catch (e) {
           console.warn("fanout failed:", e);
         }
@@ -763,6 +807,7 @@ export default function RequestDetailsPage() {
                       setCommentOpen(false);
                       setForwardOpen((v) => !v);
                     }}
+                    disabled={pending || !forwardTargetingLoaded}
                   >
                     إحالة
                   </Button>
@@ -841,9 +886,9 @@ export default function RequestDetailsPage() {
                   <div className="grid gap-2">
                     <Label className="text-xs">الجهة المُحال إليها</Label>
                     <Select
-                      value={forwardTargetKey}
+                      value={forwardTargetUid}
                       onValueChange={(v) =>
-                        setForwardTargetKey(v as RequestRecipientKey)
+                        setForwardTargetUid(v)
                       }
                     >
                       <SelectTrigger>
@@ -851,14 +896,18 @@ export default function RequestDetailsPage() {
                       </SelectTrigger>
                       <SelectContent>
                         {forwardTargets.map((r) => (
-                          <SelectItem key={r.key} value={r.key}>
+                          <SelectItem key={r.uid} value={r.uid}>
                             {r.label}
                           </SelectItem>
                         ))}
                       </SelectContent>
                     </Select>
 
-                    {forwardTargets.length === 0 ? (
+                    {!forwardTargetingLoaded ? (
+                      <div className="text-xs text-muted-foreground">
+                        Loading forwarding targets...
+                      </div>
+                    ) : forwardTargets.length === 0 ? (
                       <div className="text-xs text-muted-foreground">
                         لا توجد جهات متاحة للإحالة.
                       </div>

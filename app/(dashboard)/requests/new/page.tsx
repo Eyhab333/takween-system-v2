@@ -23,10 +23,23 @@ import {
   type RequestRecipientKey,
 } from "@/lib/internal-requests/recipients";
 import { createInternalRequestWithNumber } from "@/lib/internal-requests/firestore";
-import {
-  canSendTo,
-  getVisibleRecipientsForSender,
-} from "@/lib/internal-requests/recipient-permissions";
+
+type TargetedRecipient = {
+  label: string;
+  uid: string;
+  role: string | null;
+  orgUnitId: string;
+  positionCode: string;
+  legacyRecipientKey: RequestRecipientKey | null;
+  legacyRecipientNumber: number | null;
+  personTarget: { mode: "PERSON"; uid: string };
+  positionTargets: Array<{
+    mode: "POSITION";
+    orgUnitId: string;
+    positionCode: string;
+  }>;
+};
+
 type UploadedAttachment = {
   name: string;
   size: number;
@@ -39,7 +52,6 @@ function safeFileName(name: string) {
 }
 async function fanoutRequestNotification(payload: {
   requestId: string;
-  toRecipientKeys: string[];
   title: string;
   body: string;
   link: string;
@@ -53,7 +65,12 @@ async function fanoutRequestNotification(payload: {
       "Content-Type": "application/json",
       Authorization: `Bearer ${token}`,
     },
-    body: JSON.stringify(payload),
+    body: JSON.stringify({
+      requestId: payload.requestId,
+      title: payload.title,
+      body: payload.body,
+      link: payload.link,
+    }),
   });
   if (!res.ok) {
     let msg = "تعذر إرسال الإشعار";
@@ -71,13 +88,13 @@ export default function NewRequestPage() {
   const [myRecipientKey, setMyRecipientKey] =
     useState<RequestRecipientKey | null>(null);
   const [myRecipientLoaded, setMyRecipientLoaded] = useState(false);
-  const [mainRecipientKey, setMainRecipientKey] = useState<
-    RequestRecipientKey | ""
-  >("");
+  const [targetedRecipients, setTargetedRecipients] = useState<
+    TargetedRecipient[]
+  >([]);
+  const [targetingLoaded, setTargetingLoaded] = useState(false);
+  const [mainRecipientUid, setMainRecipientUid] = useState("");
   const [ccOpen, setCcOpen] = useState(false);
-  const [ccRecipientKeys, setCcRecipientKeys] = useState<RequestRecipientKey[]>(
-    [],
-  );
+  const [ccRecipientUids, setCcRecipientUids] = useState<string[]>([]);
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
   const [files, setFiles] = useState<File[]>([]);
@@ -88,13 +105,13 @@ export default function NewRequestPage() {
   const allowNavRef = useRef(false);
   const isDirty = useMemo(() => {
     return Boolean(
-      (mainRecipientKey && String(mainRecipientKey).length > 0) ||
-      ccRecipientKeys.length > 0 ||
+      mainRecipientUid.length > 0 ||
+      ccRecipientUids.length > 0 ||
       title.trim().length > 0 ||
       description.trim().length > 0 ||
       files.length > 0,
     );
-  }, [mainRecipientKey, ccRecipientKeys, title, description, files.length]);
+  }, [mainRecipientUid, ccRecipientUids, title, description, files.length]);
   useEffect(() => {
     dirtyRef.current = isDirty && !pending;
   }, [isDirty, pending]);
@@ -155,29 +172,76 @@ export default function NewRequestPage() {
       cancelled = true;
     };
   }, [loading, uid]);
-  const availableMainRecipients = useMemo(() => {
-    if (!myRecipientLoaded) return [];
-    return getVisibleRecipientsForSender(myRecipientKey, [myRecipientKey]);
-  }, [myRecipientKey, myRecipientLoaded]);
-  const availableCcRecipients = useMemo(() => {
-    if (!myRecipientLoaded) return [];
-    return getVisibleRecipientsForSender(myRecipientKey, [
-      myRecipientKey,
-      mainRecipientKey,
-    ]);
-  }, [myRecipientKey, myRecipientLoaded, mainRecipientKey]);
   useEffect(() => {
-    setCcRecipientKeys((prev) =>
+    if (loading) return;
+    if (!uid) {
+      setTargetedRecipients([]);
+      setTargetingLoaded(true);
+      return;
+    }
+
+    let cancelled = false;
+    setTargetingLoaded(false);
+
+    (async () => {
+      try {
+        const user = auth.currentUser;
+        if (!user) throw new Error("No authenticated user");
+        const token = await user.getIdToken();
+        const response = await fetch("/api/internal-requests/targeting", {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        const payload = await response.json();
+
+        if (
+          !response.ok ||
+          payload?.source !== "engine" ||
+          !Array.isArray(payload?.recipients)
+        ) {
+          throw new Error("Targeting data is unavailable");
+        }
+
+        if (!cancelled) {
+          setTargetedRecipients(payload.recipients as TargetedRecipient[]);
+        }
+      } catch {
+        if (!cancelled) setTargetedRecipients([]);
+      } finally {
+        if (!cancelled) setTargetingLoaded(true);
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [loading, uid]);
+  const recipientSource = useMemo(() => {
+    if (!myRecipientLoaded || !targetingLoaded) return [];
+    return targetedRecipients;
+  }, [myRecipientLoaded, targetedRecipients, targetingLoaded]);
+  const availableMainRecipients = useMemo(() => {
+    return recipientSource.filter((recipient) => recipient.uid !== uid);
+  }, [recipientSource, uid]);
+  const availableCcRecipients = useMemo(() => {
+    return recipientSource.filter(
+      (recipient) =>
+        recipient.uid !== uid && recipient.uid !== mainRecipientUid,
+    );
+  }, [mainRecipientUid, recipientSource, uid]);
+  useEffect(() => {
+    setCcRecipientUids((prev) =>
       prev.filter(
-        (k) => k !== mainRecipientKey && canSendTo(myRecipientKey, k),
+        (recipientUid) =>
+          recipientUid !== mainRecipientUid &&
+          availableCcRecipients.some((recipient) => recipient.uid === recipientUid),
       ),
     );
-  }, [mainRecipientKey, myRecipientKey]);
-  const ccCount = ccRecipientKeys.length;
-  function toggleCcKey(key: RequestRecipientKey, on: boolean) {
-    setCcRecipientKeys((prev) => {
-      if (on) return prev.includes(key) ? prev : [...prev, key];
-      return prev.filter((k) => k !== key);
+  }, [availableCcRecipients, mainRecipientUid]);
+  const ccCount = ccRecipientUids.length;
+  function toggleCcUid(recipientUid: string, on: boolean) {
+    setCcRecipientUids((prev) => {
+      if (on) return prev.includes(recipientUid) ? prev : [...prev, recipientUid];
+      return prev.filter((uid) => uid !== recipientUid);
     });
   }
   async function uploadAttachments(
@@ -205,19 +269,22 @@ export default function NewRequestPage() {
   }
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
-    if (!uid || !email) {
+    if (!uid) {
       toast.error("برجاء تسجيل الدخول مرة أخرى");
       return;
     }
-    if (!mainRecipientKey) {
+    if (!mainRecipientUid) {
       toast.error("اختر المرسل إليه");
       return;
     }
-    if (myRecipientKey && mainRecipientKey === myRecipientKey) {
+    if (mainRecipientUid === uid) {
       toast.error("لا يمكن إرسال الطلب لنفس الجهة");
       return;
     }
-    if (!canSendTo(myRecipientKey, mainRecipientKey as RequestRecipientKey)) {
+    const mainRecipientIsAllowed = availableMainRecipients.some(
+      (recipient) => recipient.uid === mainRecipientUid,
+    );
+    if (!mainRecipientIsAllowed) {
       toast.error("هذه الجهة غير متاحة لك");
       return;
     }
@@ -226,27 +293,51 @@ export default function NewRequestPage() {
       return;
     }
     startTransition(async () => {
-      const safeCcKeys = Array.from(
+      const selectedMainRecipient = recipientSource.find(
+        (recipient) => recipient.uid === mainRecipientUid,
+      );
+      if (!selectedMainRecipient) {
+        toast.error("Ù‡Ø°Ù‡ Ø§Ù„Ø¬Ù‡Ø© ØºÙŠØ± Ù…ØªØ§Ø­Ø© Ù„Ùƒ");
+        return;
+      }
+      const safeCcRecipients = Array.from(
         new Set(
-          ccRecipientKeys.filter(
-            (k) => k !== mainRecipientKey && canSendTo(myRecipientKey, k),
+          ccRecipientUids.filter(
+            (recipientUid) =>
+              recipientUid !== mainRecipientUid &&
+              availableCcRecipients.some((recipient) => recipient.uid === recipientUid),
           ),
         ),
-      ) as RequestRecipientKey[];
+      )
+        .map((recipientUid) =>
+          recipientSource.find((recipient) => recipient.uid === recipientUid),
+        )
+        .filter((recipient): recipient is TargetedRecipient => Boolean(recipient));
       try {
         const requestId = await createInternalRequestWithNumber({
           title: title.trim(),
           type: "general",
           description: description.trim(),
           createdByUid: uid,
-          createdByEmail: email,
+          createdByEmail: email ?? null,
           createdByRole: role ?? "employee",
           createdByDept: null,
           createdByRecipientKey: myKey,
           createdByLabel: myLabel,
-          mainRecipientKey: mainRecipientKey as RequestRecipientKey,
-          ccRecipientKeys: safeCcKeys,
-        } as any);
+          mainRecipient: {
+            uid: selectedMainRecipient.uid,
+            role: selectedMainRecipient.role as any,
+            label: selectedMainRecipient.label,
+            orgUnitId: selectedMainRecipient.orgUnitId,
+            positionCode: selectedMainRecipient.positionCode,
+            legacyRecipientKey: selectedMainRecipient.legacyRecipientKey,
+            legacyRecipientNumber: selectedMainRecipient.legacyRecipientNumber,
+          },
+          ccRecipients: safeCcRecipients.map((recipient) => ({
+            uid: recipient.uid,
+            legacyRecipientKey: recipient.legacyRecipientKey,
+          })),
+        });
         if (files.length > 0) {
           const tId = toast.loading("جارٍ رفع المرفقات...");
           try {
@@ -264,21 +355,12 @@ export default function NewRequestPage() {
           }
         }
         try {
-          const keys = Array.from(
-            new Set([mainRecipientKey, ...safeCcKeys].filter(Boolean)),
-          ) as string[];
-          const finalKeys = myRecipientKey
-            ? keys.filter((k) => k !== myRecipientKey)
-            : keys;
-          if (finalKeys.length) {
-            await fanoutRequestNotification({
-              requestId,
-              toRecipientKeys: finalKeys,
-              title: "طلب جديد",
-              body: `${myLabel || "منشئ الطلب"}: ${title.trim()}`,
-              link: `/requests/${requestId}`,
-            });
-          }
+          await fanoutRequestNotification({
+            requestId,
+            title: "طلب جديد",
+            body: `${myLabel || "منشئ الطلب"}: ${title.trim()}`,
+            link: `/requests/${requestId}`,
+          });
         } catch (e) {
           console.warn("fanout failed:", e);
         }
@@ -292,7 +374,7 @@ export default function NewRequestPage() {
       }
     });
   }
-  if (loading || !myRecipientLoaded) return null;
+  if (loading || !myRecipientLoaded || !targetingLoaded) return null;
   return (
     <div className="max-w-2xl mx-auto">
       {" "}
@@ -311,9 +393,9 @@ export default function NewRequestPage() {
               <Label className="text-xs">المرسل إليه</Label>{" "}
               <Select
                 dir="rtl"
-                value={mainRecipientKey}
+                value={mainRecipientUid}
                 onValueChange={(val) =>
-                  setMainRecipientKey(val as RequestRecipientKey)
+                  setMainRecipientUid(val)
                 }
               >
                 {" "}
@@ -324,14 +406,14 @@ export default function NewRequestPage() {
                 <SelectContent>
                   {" "}
                   {availableMainRecipients.map((r) => (
-                    <SelectItem key={r.key} value={r.key}>
+                    <SelectItem key={r.uid} value={r.uid}>
                       {" "}
                       <div className="flex items-center justify-between w-full gap-2">
                         {" "}
                         <span className="truncate">{r.label}</span>{" "}
                         <span className="text-xs text-muted-foreground flex-none">
                           {" "}
-                          {r.number}{" "}
+                          {r.positionCode}{" "}
                         </span>{" "}
                       </div>{" "}
                     </SelectItem>
@@ -383,8 +465,8 @@ export default function NewRequestPage() {
                           variant="outline"
                           size="sm"
                           onClick={() =>
-                            setCcRecipientKeys(
-                              availableCcRecipients.map((r) => r.key),
+                            setCcRecipientUids(
+                              availableCcRecipients.map((r) => r.uid),
                             )
                           }
                           disabled={availableCcRecipients.length === 0}
@@ -396,8 +478,8 @@ export default function NewRequestPage() {
                           type="button"
                           variant="outline"
                           size="sm"
-                          onClick={() => setCcRecipientKeys([])}
-                          disabled={ccRecipientKeys.length === 0}
+                          onClick={() => setCcRecipientUids([])}
+                          disabled={ccRecipientUids.length === 0}
                         >
                           {" "}
                           مسح{" "}
@@ -413,10 +495,10 @@ export default function NewRequestPage() {
                         </div>
                       ) : (
                         availableCcRecipients.map((r) => {
-                          const checked = ccRecipientKeys.includes(r.key);
+                          const checked = ccRecipientUids.includes(r.uid);
                           return (
                             <label
-                              key={r.key}
+                              key={r.uid}
                               className={`flex items-center justify-between rounded-md border px-3 py-2 text-sm cursor-pointer select-none transition ${checked ? "bg-muted font-medium" : "hover:bg-muted/50"}`}
                             >
                               {" "}
@@ -427,14 +509,14 @@ export default function NewRequestPage() {
                                   className="h-4 w-4"
                                   checked={checked}
                                   onChange={(e) =>
-                                    toggleCcKey(r.key, e.target.checked)
+                                    toggleCcUid(r.uid, e.target.checked)
                                   }
                                 />{" "}
                                 <span className="truncate">{r.label}</span>{" "}
                               </div>{" "}
                               <span className="text-xs text-muted-foreground flex-none">
                                 {" "}
-                                {r.number}{" "}
+                                {r.positionCode}{" "}
                               </span>{" "}
                             </label>
                           );
@@ -447,8 +529,12 @@ export default function NewRequestPage() {
               {ccCount > 0 ? (
                 <div className="text-[11px] text-muted-foreground">
                   {" "}
-                  {ccRecipientKeys
-                    .map((k) => getRecipientByKey(k)?.label || k)
+                  {ccRecipientUids
+                    .map(
+                      (recipientUid) =>
+                        recipientSource.find((r) => r.uid === recipientUid)?.label ||
+                        recipientUid,
+                    )
                     .join("، ")}{" "}
                 </div>
               ) : null}{" "}

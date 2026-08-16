@@ -12,7 +12,6 @@ import {
   doc,
   getDoc,
   getDocs,
-  limit,
   updateDoc,
   runTransaction,
   type QueryDocumentSnapshot,
@@ -35,23 +34,6 @@ const COLLECTION_NAME = "internalRequests"
 const COUNTERS_COLLECTION = "internalRequestCounters"
 
 // ===================== Helpers (Hybrid) =====================
-
-async function resolveAssigneeUidByRecipientKey(recipientKey: RequestRecipientKey) {
-  const qy = query(
-    collection(db, "users"),
-    where("requestRecipientKey", "==", recipientKey),
-    limit(1)
-  )
-
-  const snap = await getDocs(qy)
-  if (snap.empty) return null
-
-  const d = snap.docs[0]
-  const data = d.data() as any
-  const role = (data.role as Role | undefined) ?? null
-
-  return { uid: d.id, role }
-}
 
 async function resolveCcUidsByRecipientKeys(keys: RequestRecipientKey[]) {
   const unique = Array.from(new Set(keys)).filter(Boolean) as RequestRecipientKey[]
@@ -252,8 +234,19 @@ export type CreateInternalRequestWithNumberInput = {
   createdByRecipientKey?: RequestRecipientKey | null
   createdByLabel?: string | null
 
-  mainRecipientKey: RequestRecipientKey
-  ccRecipientKeys?: RequestRecipientKey[]
+  mainRecipient: {
+    uid: string
+    role: Role | null
+    label: string
+    orgUnitId: string
+    positionCode: string
+    legacyRecipientKey?: RequestRecipientKey | null
+    legacyRecipientNumber?: number | null
+  }
+  ccRecipients?: Array<{
+    uid: string
+    legacyRecipientKey?: RequestRecipientKey | null
+  }>
 }
 
 /**
@@ -266,26 +259,38 @@ export type CreateInternalRequestWithNumberInput = {
 export async function createInternalRequestWithNumber(
   input: CreateInternalRequestWithNumberInput
 ) {
-  const recipient = getRecipientByKey(input.mainRecipientKey)
-  if (!recipient) {
-    throw new Error(`Unknown mainRecipientKey: ${input.mainRecipientKey}`)
-  }
+  const recipient = input.mainRecipient
+  if (!recipient.uid) throw new Error("Missing canonical main recipient UID")
 
-  const ccKeys = Array.isArray(input.ccRecipientKeys)
-    ? (input.ccRecipientKeys as RequestRecipientKey[])
-    : []
+  const legacyRecipient = recipient.legacyRecipientKey
+    ? getRecipientByKey(recipient.legacyRecipientKey)
+    : undefined
+  const recipientKey = legacyRecipient?.key ?? null
+  const recipientLabel = legacyRecipient?.label ?? recipient.label
+  const recipientNumber = legacyRecipient?.number ?? recipient.legacyRecipientNumber ?? null
+  const ccRecipients = Array.isArray(input.ccRecipients) ? input.ccRecipients : []
+  const ccUids = Array.from(
+    new Set(ccRecipients.map((value) => value.uid).filter((uid) => uid && uid !== recipient.uid))
+  )
+  const ccKeys = Array.from(
+    new Set(
+      ccRecipients
+        .map((value) => value.legacyRecipientKey)
+        .filter((key): key is RequestRecipientKey => Boolean(key && getRecipientByKey(key)))
+    )
+  )
 
   // ✅ Hybrid: اعرف الشخص (UID) المرتبط بهذه الجهة
-  const assignee = await resolveAssigneeUidByRecipientKey(recipient.key)
+  const assignee = { uid: recipient.uid, role: recipient.role, key: recipientKey }
   if (!assignee?.uid) {
-    throw new Error(`لم يتم العثور على مستخدم مرتبط بالجهة: ${recipient.key}`)
+    throw new Error(`لم يتم العثور على مستخدم مرتبط بالجهة: ${recipientKey}`)
   }
 
   // ✅ Hybrid: حوّل CC keys → CC uids
-  const ccUids = ccKeys.length ? await resolveCcUidsByRecipientKeys(ccKeys) : []
 
   const now = new Date()
-  const counterRef = doc(db, COUNTERS_COLLECTION, recipient.key)
+  const counterKey = recipientKey ?? `uid_${recipient.uid}`
+  const counterRef = doc(db, COUNTERS_COLLECTION, counterKey)
   const reqRef = doc(collection(db, COLLECTION_NAME))
 
   await runTransaction(db, async (tx) => {
@@ -302,7 +307,9 @@ export async function createInternalRequestWithNumber(
       { merge: true }
     )
 
-    const requestNumber = `${recipient.number}/${nextSeq}`
+    const requestNumber = recipientNumber !== null
+      ? `${recipientNumber}/${nextSeq}`
+      : `${recipient.uid}/${nextSeq}`
 
     // 2) بيانات الطلب
     const docData = {
@@ -320,9 +327,12 @@ export async function createInternalRequestWithNumber(
       status: "open" as RequestStatus,
 
       // الجهة الأساسية + رقم الطلب
-      mainRecipientKey: recipient.key,
-      mainRecipientLabel: recipient.label,
-      mainRecipientNumber: recipient.number,
+      mainRecipientKey: recipientKey,
+      mainRecipientLabel: recipientLabel,
+      mainRecipientNumber: recipientNumber,
+      mainRecipientUid: recipient.uid,
+      mainRecipientOrgUnitId: recipient.orgUnitId,
+      mainRecipientPositionCode: recipient.positionCode,
       sequenceForRecipient: nextSeq,
       requestNumber,
 
@@ -332,8 +342,8 @@ export async function createInternalRequestWithNumber(
         role: assignee.role,
       },
       currentAssigneeUid: assignee.uid,
-      currentAssigneeKey: recipient.key,
-      currentAssigneeLabel: recipient.label,
+      currentAssigneeKey: recipientKey,
+      currentAssigneeLabel: recipientLabel,
 
       // ✅ CC (keys + uids)
       ccRecipientKeys: ccKeys,
@@ -351,7 +361,7 @@ export async function createInternalRequestWithNumber(
           fromRole: input.createdByRole,
           toUid: assignee.uid,
           toRole: assignee.role,
-          toRecipientKey: recipient.key,
+          toRecipientKey: recipientKey,
           actionType: "submitted" as RequestActionType,
           comment: "",
         },

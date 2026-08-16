@@ -20,7 +20,6 @@ import type { InternalRequest } from "@/lib/internal-requests/types";
 import { mapDataToInternalRequest } from "@/lib/internal-requests/firestore";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { getRecipientByEmail } from "@/lib/internal-requests/recipients";
 
 
 import RequestsFiltersBar from "@/components/requests/RequestsFilters";
@@ -40,12 +39,17 @@ export default function InboxPage() {
   const { uid, loading } = useClaimsRole();
 
   const [myRecipientKey, setMyRecipientKey] = useState<RecipientKey | null>(null);
+  const [myRecipientLoaded, setMyRecipientLoaded] = useState(false);
 
   const [primary, setPrimary] = useState<InternalRequest[]>([]);
   const [cc, setCc] = useState<InternalRequest[]>([]);
+  const [legacyPrimary, setLegacyPrimary] = useState<InternalRequest[]>([]);
+  const [legacyCc, setLegacyCc] = useState<InternalRequest[]>([]);
 
   const [subscribedPrimary, setSubscribedPrimary] = useState(false);
   const [subscribedCc, setSubscribedCc] = useState(false);
+  const [subscribedLegacyPrimary, setSubscribedLegacyPrimary] = useState(false);
+  const [subscribedLegacyCc, setSubscribedLegacyCc] = useState(false);
 
   const [errMsg, setErrMsg] = useState<string | null>(null);
 
@@ -57,9 +61,12 @@ export default function InboxPage() {
     if (!uid) {
       setErrMsg("سجّل الدخول أولاً");
       setMyRecipientKey(null);
+      setMyRecipientLoaded(true);
       // ✅ خلّص التحميل عشان ما يعلق
       setSubscribedPrimary(true);
       setSubscribedCc(true);
+      setSubscribedLegacyPrimary(true);
+      setSubscribedLegacyCc(true);
       return;
     }
 
@@ -92,6 +99,8 @@ export default function InboxPage() {
           setSubscribedPrimary(true);
           setSubscribedCc(true);
         }
+      } finally {
+        if (!cancelled) setMyRecipientLoaded(true);
       }
     })();
 
@@ -105,19 +114,23 @@ export default function InboxPage() {
     if (loading) return;
 
     // لو مفيش uid أو مفيش recipientKey، ما تعملش snapshot
-    if (!uid || !myRecipientKey) return;
+    if (!uid || !myRecipientLoaded) return;
 
     let unsub1: Unsubscribe | null = null;
     let unsub2: Unsubscribe | null = null;
+    let unsub3: Unsubscribe | null = null;
+    let unsub4: Unsubscribe | null = null;
 
     setSubscribedPrimary(false);
     setSubscribedCc(false);
+    setSubscribedLegacyPrimary(false);
+    setSubscribedLegacyCc(false);
     setErrMsg(null);
 
     // ✅ الوارد الأساسي
     const q1 = query(
       collection(db, "internalRequests"),
-      where("currentAssigneeKey", "==", myRecipientKey),
+      where("currentAssigneeUid", "==", uid),
       where("archived", "==", false),
       orderBy("createdAt", "desc")
     );
@@ -140,7 +153,7 @@ export default function InboxPage() {
     // ✅ نسخة للإطلاع (cc)
     const q2 = query(
       collection(db, "internalRequests"),
-      where("ccRecipientKeys", "array-contains", myRecipientKey),
+      where("ccUids", "array-contains", uid),
       where("archived", "==", false),
       orderBy("createdAt", "desc")
     );
@@ -160,17 +173,80 @@ export default function InboxPage() {
       }
     );
 
+    if (myRecipientKey) {
+      const q3 = query(
+        collection(db, "internalRequests"),
+        where("currentAssigneeKey", "==", myRecipientKey),
+        where("archived", "==", false),
+        orderBy("createdAt", "desc")
+      );
+      unsub3 = onSnapshot(
+        q3,
+        (snap) => {
+          const list: InternalRequest[] = [];
+          snap.forEach((d) => {
+            const data = d.data() as Record<string, unknown>;
+            if (typeof data.currentAssigneeUid === "string" && data.currentAssigneeUid) {
+              return;
+            }
+            list.push(mapDataToInternalRequest(d.id, data));
+          });
+          setLegacyPrimary(list);
+          setSubscribedLegacyPrimary(true);
+        },
+        (err) => {
+          console.error("legacy primary inbox snapshot error:", err);
+          setErrMsg(err?.message || "Unable to load legacy primary inbox requests");
+          setSubscribedLegacyPrimary(true);
+        }
+      );
+
+      const q4 = query(
+        collection(db, "internalRequests"),
+        where("ccRecipientKeys", "array-contains", myRecipientKey),
+        where("archived", "==", false),
+        orderBy("createdAt", "desc")
+      );
+      unsub4 = onSnapshot(
+        q4,
+        (snap) => {
+          const list: InternalRequest[] = [];
+          snap.forEach((d) => {
+            const data = d.data() as Record<string, unknown>;
+            if (Array.isArray(data.ccUids)) return;
+            list.push(mapDataToInternalRequest(d.id, data));
+          });
+          setLegacyCc(list);
+          setSubscribedLegacyCc(true);
+        },
+        (err) => {
+          console.error("legacy cc inbox snapshot error:", err);
+          setErrMsg(err?.message || "Unable to load legacy CC inbox requests");
+          setSubscribedLegacyCc(true);
+        }
+      );
+    } else {
+      setLegacyPrimary([]);
+      setLegacyCc([]);
+      setSubscribedLegacyPrimary(true);
+      setSubscribedLegacyCc(true);
+    }
+
     return () => {
       unsub1?.();
       unsub2?.();
+      unsub3?.();
+      unsub4?.();
     };
-  }, [loading, uid, myRecipientKey]);
+  }, [loading, uid, myRecipientKey, myRecipientLoaded]);
 
   const items = useMemo(() => {
   // ✅ دمج بدون تكرار + ترتيب حسب createdAt
   const map = new Map<string, InternalRequest>();
   for (const r of primary) map.set(r.id, r);
   for (const r of cc) if (!map.has(r.id)) map.set(r.id, r);
+  for (const r of legacyPrimary) if (!map.has(r.id)) map.set(r.id, r);
+  for (const r of legacyCc) if (!map.has(r.id)) map.set(r.id, r);
 
   let arr = Array.from(map.values());
 
@@ -186,9 +262,13 @@ export default function InboxPage() {
   });
 
   return arr;
-}, [primary, cc, myRecipientKey]);
+}, [primary, cc, legacyPrimary, legacyCc, myRecipientKey]);
 
-  const subscribed = subscribedPrimary && subscribedCc;
+  const subscribed =
+    subscribedPrimary &&
+    subscribedCc &&
+    subscribedLegacyPrimary &&
+    subscribedLegacyCc;
 
   const [filters, setFilters] = useState(defaultRequestsFilters);
   const [q, setQ] = useState("");
@@ -197,10 +277,11 @@ export default function InboxPage() {
     const afterFilters = applyRequestFilters(items, filters, {
       mode: "inbox",
       myRecipientKey,
+      myUid: uid,
     });
 
     return searchRequestsByTitleOnly(afterFilters, q);
-  }, [items, filters, myRecipientKey, q]);
+  }, [items, filters, myRecipientKey, uid, q]);
 
   const hasActiveFilters =
     JSON.stringify(filters) !== JSON.stringify(defaultRequestsFilters);
@@ -236,7 +317,7 @@ export default function InboxPage() {
   }
 
   // لو المستخدم مش مربوط بجهة
-  if (!myRecipientKey) {
+  if (!myRecipientKey && items.length === 0) {
     return (
       <div className="max-w-2xl mx-auto">
         <Card>
@@ -307,12 +388,18 @@ export default function InboxPage() {
                         ? r.actions[r.actions.length - 1]
                         : null;
 
-                    const isCcOnly =
-                      (r as any)?.currentAssigneeKey !== myRecipientKey &&
-                      Array.isArray((r as any)?.ccRecipientKeys) &&
-                      (r as any).ccRecipientKeys.includes(myRecipientKey);
+                    const data = r as any;
+                    const isPrimary =
+                      typeof data.currentAssigneeUid === "string" && data.currentAssigneeUid
+                        ? data.currentAssigneeUid === uid
+                        : data.currentAssigneeKey === myRecipientKey;
+                    const isCc = Array.isArray(data.ccUids)
+                      ? data.ccUids.includes(uid)
+                      : Array.isArray(data.ccRecipientKeys) &&
+                        data.ccRecipientKeys.includes(myRecipientKey);
+                    const isCcOnly = !isPrimary && isCc;
                     const creator =
-                      getRecipientByEmail((r as any).createdByEmail)?.label ||
+                      (r as any).createdByLabel ||
                       (r as any).createdByEmail ||
                       "—";
 

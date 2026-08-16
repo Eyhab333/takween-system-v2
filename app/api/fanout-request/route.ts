@@ -54,6 +54,47 @@ async function resolveUidsByRecipientKeys(keys: string[]) {
   return Array.from(uids);
 }
 
+async function resolveNotificationUids(
+  requestData: Record<string, unknown>,
+  requesterUid: string
+): Promise<string[]> {
+  const uids = new Set<string>();
+  const addUid = (value: unknown) => {
+    if (typeof value === "string" && value && value !== requesterUid) {
+      uids.add(value);
+    }
+  };
+
+  const currentAssigneeUid = requestData.currentAssigneeUid;
+  const ccUids = Array.isArray(requestData.ccUids) ? requestData.ccUids : null;
+  addUid(currentAssigneeUid);
+  ccUids?.forEach(addUid);
+  addUid(requestData.createdByUid);
+
+  const legacyKeys: string[] = [];
+  if (typeof currentAssigneeUid !== "string" || !currentAssigneeUid) {
+    if (typeof requestData.currentAssigneeKey === "string") {
+      legacyKeys.push(requestData.currentAssigneeKey);
+    } else if (typeof requestData.mainRecipientKey === "string") {
+      legacyKeys.push(requestData.mainRecipientKey);
+    }
+  }
+  if (!ccUids) {
+    const legacyCcKeys = Array.isArray(requestData.ccRecipientKeys)
+      ? requestData.ccRecipientKeys.filter(
+          (key): key is string => typeof key === "string"
+        )
+      : [];
+    legacyKeys.push(...legacyCcKeys);
+  }
+
+  for (const uid of await resolveUidsByRecipientKeys(legacyKeys)) {
+    addUid(uid);
+  }
+
+  return [...uids];
+}
+
 async function getTokensForUids(uids: string[]) {
   const { db } = getAdminServices();
   const all: { token: string; uid: string }[] = [];
@@ -77,16 +118,13 @@ export async function POST(req: NextRequest) {
 
     const body = await req.json();
     const requestId = String(body?.requestId || "").trim();
-    const toRecipientKeys = Array.isArray(body?.toRecipientKeys)
-      ? (body.toRecipientKeys as string[])
-      : [];
     const title = String(body?.title || "").trim();
     const msg = String(body?.body || "").trim();
     const link = String(body?.link || "").trim();
 
-    if (!requestId || !title || !link || toRecipientKeys.length === 0) {
+    if (!requestId || !title || !link) {
       return Response.json(
-        { error: "Missing requestId/title/link/toRecipientKeys" },
+        { error: "Missing requestId/title/link" },
         { status: 400 }
       );
     }
@@ -103,18 +141,27 @@ export async function POST(req: NextRequest) {
       HR_ROLES.includes(requester.role as any);
 
     const myKey = await getMyRecipientKey(requester.uid);
+    const actions = Array.isArray(reqData?.actions) ? reqData.actions : [];
+    const latestAction = actions[actions.length - 1] as
+      | { fromUid?: string }
+      | undefined;
+    const isLatestActionActor = latestAction?.fromUid === requester.uid;
 
     const can =
       isHr ||
       reqData?.createdByUid === requester.uid ||
-      (myKey && reqData?.currentAssigneeKey === myKey);
+      reqData?.currentAssigneeUid === requester.uid ||
+      (myKey && reqData?.currentAssigneeKey === myKey) ||
+      isLatestActionActor;
 
     if (!can) {
       return Response.json({ error: "Forbidden" }, { status: 403 });
     }
 
-    // ✅ Resolve recipients to uids
-    const targetUids = await resolveUidsByRecipientKeys(toRecipientKeys);
+    const targetUids = await resolveNotificationUids(
+      reqData as Record<string, unknown>,
+      requester.uid
+    );
 
     if (targetUids.length === 0) {
       return Response.json({ ok: true, sent: 0 });

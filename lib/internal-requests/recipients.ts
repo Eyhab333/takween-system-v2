@@ -196,25 +196,8 @@ const RECIPIENTS_BY_KEY = new Map<string, RequestRecipient>(
   RECIPIENTS.map((r) => [r.key, r])
 );
 
-function normalizeEmail(email?: string | null) {
-  return (email ?? "").trim().toLowerCase();
-}
-
-const RECIPIENTS_BY_EMAIL = new Map<string, RequestRecipient>(
-  RECIPIENTS.map((r) => [normalizeEmail(r.email), r])
-);
-
-export function isRecipientKey(value: string): value is RequestRecipientKey {
-  return RECIPIENTS_BY_KEY.has(value);
-}
-
 export function getRecipientByKey(key?: string | null) {
   if (!key) return undefined;
   return RECIPIENTS_BY_KEY.get(key);
 }
 
-export function getRecipientByEmail(email?: string | null) {
-  const normalized = normalizeEmail(email);
-  if (!normalized) return undefined;
-  return RECIPIENTS_BY_EMAIL.get(normalized);
-}
