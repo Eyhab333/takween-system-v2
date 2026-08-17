@@ -66,6 +66,7 @@ export function mapDataToInternalRequest(id: string, data: any): InternalRequest
     createdByUid: data.createdByUid,
     createdByEmail: data.createdByEmail ?? null,
     createdByDept: data.createdByDept ?? null,
+    createdByLabel: data.createdByLabel ?? null,
 
     status: (data.status as RequestStatus) ?? "open",
 
@@ -484,10 +485,6 @@ export async function performRequestAction(input: PerformRequestActionInput) {
   // استنتاج الحالة الجديدة
   let status: RequestStatus = (data.status as RequestStatus) ?? "open"
 
-const terminalStatuses: RequestStatus[] = ["approved", "rejected", "closed", "cancelled"];
-const shouldArchive = terminalStatuses.includes(status);
-
-
   if (input.newStatus) {
     status = input.newStatus
   } else {
@@ -508,6 +505,9 @@ const shouldArchive = terminalStatuses.includes(status);
         break
     }
   }
+
+  const terminalStatuses: RequestStatus[] = ["approved", "rejected", "closed", "cancelled"];
+  const shouldArchive = terminalStatuses.includes(status);
 
   // استنتاج المسؤول الحالي الجديد
   let currentAssignee = data.currentAssignee || { uid: null, role: null }

@@ -96,7 +96,7 @@ function isPdf(file: File) {
 // The dashboard uses tags containing "staff" for employee totals. Common inactive
 // markers are also excluded when present, without assuming they exist for every user.
 function isActiveStaffUser(user: Record<string, unknown>) {
-  return Array.isArray(user.tags) && user.tags.includes("staff") && user.active !== false && user.disabled !== true && user.status !== "inactive";
+  return Array.isArray(user.tags) && user.tags.includes("staff") && user.active !== false && user.disabled !== true && user.status !== "inactive" && user.employmentStatus !== "inactive";
 }
 
 async function getTargetEmployees() {

@@ -1,7 +1,8 @@
 import type { Role } from "@/hooks/use-claims-role";
 
 export const SCHOOL_OPTIONS = [
-  { key: "manar_boys", label: "منار الريادة — بنين" },
+  { key: "manar_boys_sayh", label: "منار الريادة بنين - السيح" },
+  { key: "manar_boys_faleh", label: "منار الريادة بنين - الفالح" },
   { key: "manar_girls", label: "منار الريادة — بنات" },
   { key: "rawdat_1", label: "روضة واحة الرياحين الأولى" },
   { key: "rawdat_2", label: "روضة واحة الرياحين الثانية" },
@@ -40,6 +41,7 @@ export function parseTags(input: string): string[] {
 export function buildAudienceTokens(params: {
   all?: boolean;
   schools?: string[];
+  orgUnitIds?: string[];
   units?: string[];
   roles?: string[];
   schoolTypes?: string[];
@@ -53,6 +55,10 @@ export function buildAudienceTokens(params: {
 
   for (const school of params.schools ?? []) {
     tokens.push(`schoolKey:${school}`);
+  }
+
+  for (const orgUnitId of params.orgUnitIds ?? []) {
+    tokens.push(`orgUnitId:${orgUnitId}`);
   }
 
   for (const unit of params.units ?? []) {
@@ -138,6 +144,11 @@ export function audienceLabel(token: string) {
       SCHOOL_OPTIONS.find((x) => x.key === key)?.label ??
       key
     );
+  }
+
+  if (token.startsWith("orgUnitId:")) {
+    const key = token.replace("orgUnitId:", "");
+    return SCHOOL_OPTIONS.find((x) => x.key === key)?.label ?? key;
   }
 
   if (token.startsWith("schoolType:")) {

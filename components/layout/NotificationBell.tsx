@@ -227,7 +227,7 @@ export function NotificationBell() {
         <div className="border-t px-4 py-2 text-xs flex items-center justify-between">
           <span className="text-muted-foreground">تظهر آخر ١٠ إشعارات</span>
           <Button asChild variant="link" size="sm" className="px-0 h-auto text-xs">
-            <Link href={uid ? `/employees/${uid}` : "/me"}>عرض الملف</Link>
+            <Link href="/notifications">عرض كل الإشعارات</Link>
           </Button>
         </div>
       </PopoverContent>

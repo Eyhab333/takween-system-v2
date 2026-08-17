@@ -703,7 +703,7 @@ export default function JobComplianceAdminPanel() {
           all: allUsers,
           roles: selectedRoles,
           units: selectedUnits,
-          schools: selectedSchools,
+          orgUnitIds: selectedSchools,
           schoolTypes:
             selectedSchoolTypes,
           tags,

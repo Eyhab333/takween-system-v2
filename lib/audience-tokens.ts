@@ -85,6 +85,11 @@ export function buildAudienceTokensFromUser(
       ? data.schoolKey.trim()
       : "";
 
+  const orgUnitId =
+    typeof data.orgUnitId === "string"
+      ? data.orgUnitId.trim()
+      : "";
+
   const schoolType =
     typeof data.schoolType === "string"
       ? data.schoolType.trim()
@@ -100,6 +105,14 @@ export function buildAudienceTokensFromUser(
 
   if (schoolKey) {
     tokens.push(`schoolKey:${schoolKey}`);
+  }
+
+  if (orgUnitId) {
+    tokens.push(`orgUnitId:${orgUnitId}`);
+  }
+
+  if (orgUnitId === "manar_boys_sayh" || orgUnitId === "manar_boys_faleh") {
+    tokens.push("schoolKey:manar_boys");
   }
 
   if (schoolType) {

@@ -18,6 +18,7 @@ import { db } from "@/lib/firebase";
 import useClaimsRole from "@/hooks/use-claims-role";
 import type { InternalRequest } from "@/lib/internal-requests/types";
 import { mapDataToInternalRequest } from "@/lib/internal-requests/firestore";
+import { formatCreatorDisplayLabel } from "@/lib/internal-requests/creator-label";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 
@@ -52,6 +53,7 @@ export default function InboxPage() {
   const [subscribedLegacyCc, setSubscribedLegacyCc] = useState(false);
 
   const [errMsg, setErrMsg] = useState<string | null>(null);
+  const [legacyCreatorLabels, setLegacyCreatorLabels] = useState<Record<string, string>>({});
 
 
   // 1) هات requestRecipientKey من users/{uid}
@@ -213,7 +215,7 @@ export default function InboxPage() {
           const list: InternalRequest[] = [];
           snap.forEach((d) => {
             const data = d.data() as Record<string, unknown>;
-            if (Array.isArray(data.ccUids)) return;
+            if (Array.isArray(data.ccUids) && data.ccUids.length > 0) return;
             list.push(mapDataToInternalRequest(d.id, data));
           });
           setLegacyCc(list);
@@ -263,6 +265,51 @@ export default function InboxPage() {
 
   return arr;
 }, [primary, cc, legacyPrimary, legacyCc, myRecipientKey]);
+
+  const legacyCreatorUids = useMemo(
+    () =>
+      Array.from(
+        new Set(
+          items
+            .filter((request) => !request.createdByLabel && !!request.createdByUid)
+            .map((request) => request.createdByUid),
+        ),
+      ),
+    [items],
+  );
+
+  useEffect(() => {
+    if (legacyCreatorUids.length === 0) return;
+    let cancelled = false;
+
+    (async () => {
+      const labels = await Promise.all(
+        legacyCreatorUids.map(async (creatorUid) => {
+          try {
+            const snap = await getDoc(doc(db, "users", creatorUid));
+            const label = snap.exists()
+              ? formatCreatorDisplayLabel(snap.data() as Record<string, unknown>)
+              : null;
+            return label ? [creatorUid, label] as const : null;
+          } catch {
+            return null;
+          }
+        }),
+      );
+      if (!cancelled) {
+        setLegacyCreatorLabels((current) => ({
+          ...current,
+          ...Object.fromEntries(
+            labels.filter((entry): entry is readonly [string, string] => Boolean(entry)),
+          ),
+        }));
+      }
+    })().catch((error) => console.error("load legacy request creators error:", error));
+
+    return () => {
+      cancelled = true;
+    };
+  }, [legacyCreatorUids]);
 
   const subscribed =
     subscribedPrimary &&
@@ -382,7 +429,7 @@ export default function InboxPage() {
                 </thead>
 
                 <tbody>
-                  {items.map((r) => {
+                  {filteredItems.map((r) => {
                     const lastAction =
                       r.actions && r.actions.length > 0
                         ? r.actions[r.actions.length - 1]
@@ -393,13 +440,14 @@ export default function InboxPage() {
                       typeof data.currentAssigneeUid === "string" && data.currentAssigneeUid
                         ? data.currentAssigneeUid === uid
                         : data.currentAssigneeKey === myRecipientKey;
-                    const isCc = Array.isArray(data.ccUids)
+                    const isCc = Array.isArray(data.ccUids) && data.ccUids.length > 0
                       ? data.ccUids.includes(uid)
                       : Array.isArray(data.ccRecipientKeys) &&
                         data.ccRecipientKeys.includes(myRecipientKey);
                     const isCcOnly = !isPrimary && isCc;
                     const creator =
                       (r as any).createdByLabel ||
+                      legacyCreatorLabels[r.createdByUid] ||
                       (r as any).createdByEmail ||
                       "—";
 

@@ -69,7 +69,8 @@ export function applyRequestFilters(
       const data = r as any;
       const hasCanonicalAssignee =
         typeof data.currentAssigneeUid === "string" && !!data.currentAssigneeUid;
-      const hasCanonicalCc = Array.isArray(data.ccUids);
+      const hasCanonicalCc =
+        Array.isArray(data.ccUids) && data.ccUids.length > 0;
       const isPrimary = hasCanonicalAssignee
         ? data.currentAssigneeUid === myUid
         : !!myKey && data.currentAssigneeKey === myKey;

@@ -23,6 +23,7 @@ import {
   type RequestRecipientKey,
 } from "@/lib/internal-requests/recipients";
 import { createInternalRequestWithNumber } from "@/lib/internal-requests/firestore";
+import { formatCreatorDisplayLabel } from "@/lib/internal-requests/creator-label";
 
 type TargetedRecipient = {
   label: string;
@@ -88,6 +89,7 @@ export default function NewRequestPage() {
   const [myRecipientKey, setMyRecipientKey] =
     useState<RequestRecipientKey | null>(null);
   const [myRecipientLoaded, setMyRecipientLoaded] = useState(false);
+  const [createdByDisplayLabel, setCreatedByDisplayLabel] = useState<string | null>(null);
   const [targetedRecipients, setTargetedRecipients] = useState<
     TargetedRecipient[]
   >([]);
@@ -149,6 +151,7 @@ export default function NewRequestPage() {
     if (loading) return;
     if (!uid) {
       setMyRecipientKey(null);
+      setCreatedByDisplayLabel(null);
       setMyRecipientLoaded(true);
       return;
     }
@@ -161,9 +164,15 @@ export default function NewRequestPage() {
         const key =
           (data?.requestRecipientKey as RequestRecipientKey | undefined) ??
           null;
-        if (!cancelled) setMyRecipientKey(key);
+        if (!cancelled) {
+          setMyRecipientKey(key);
+          setCreatedByDisplayLabel(formatCreatorDisplayLabel(data ?? {}));
+        }
       } catch {
-        if (!cancelled) setMyRecipientKey(null);
+        if (!cancelled) {
+          setMyRecipientKey(null);
+          setCreatedByDisplayLabel(null);
+        }
       } finally {
         if (!cancelled) setMyRecipientLoaded(true);
       }
@@ -323,7 +332,7 @@ export default function NewRequestPage() {
           createdByRole: role ?? "employee",
           createdByDept: null,
           createdByRecipientKey: myKey,
-          createdByLabel: myLabel,
+          createdByLabel: createdByDisplayLabel,
           mainRecipient: {
             uid: selectedMainRecipient.uid,
             role: selectedMainRecipient.role as any,
