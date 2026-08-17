@@ -137,7 +137,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
 
   return (
     <div className="min-h-screen grid md:grid-cols-[240px_1fr]">
-      <aside className="hidden md:block border-l">
+      <aside className="hidden border-l md:sticky md:top-14 md:block md:h-[calc(100vh-3.5rem)] md:self-start">
         <div className="space-y-2 p-4">
           {items.map((it) => {
             const targetHref =
