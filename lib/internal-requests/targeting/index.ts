@@ -3,6 +3,7 @@ export { TARGETING_RULES } from "./rules";
 export {
   RequestTargetingError,
   getPositionCardinality,
+  resolveAllowedPersonTargets,
   resolveAllowedPositionTargets,
   validateRequestTarget,
 } from "./server";

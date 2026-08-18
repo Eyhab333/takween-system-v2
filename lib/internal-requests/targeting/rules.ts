@@ -1,6 +1,7 @@
 import { POSITION_CODES, type PositionCode, type TargetingRule } from "./types";
 
 const ALL_TARGET_MODES = ["POSITION", "PERSON"] as const;
+const EXECUTIVE_ASSISTANT_ONLY_TAG = "request_target:executive_assistant_only";
 const SCHOOL_HEAD_UNIT_IDS = [
   "manar_girls",
   "rawdat_1",
@@ -24,6 +25,14 @@ const LOCAL_SCHOOL_STAFF: readonly PositionCode[] = [
 // Rules identify positions and organizational relationships only. They contain
 // no employee, email, UID, or legacy-recipient identity.
 export const TARGETING_RULES: readonly TargetingRule[] = [
+  {
+    id: "tagged-users-to-executive-assistant",
+    senderPositions: POSITION_CODES,
+    senderTags: [EXECUTIVE_ASSISTANT_ONLY_TAG],
+    targetPositions: ["executive_assistant"],
+    scope: "global",
+    allowedTargetModes: ALL_TARGET_MODES,
+  },
   {
     id: "local-staff-to-principal",
     senderPositions: LOCAL_SCHOOL_STAFF,
@@ -141,6 +150,14 @@ export const TARGETING_RULES: readonly TargetingRule[] = [
     targetOrgUnitIds: SCHOOL_HEAD_UNIT_IDS,
     scope: "global",
     allowedTargetModes: ALL_TARGET_MODES,
+  },
+  {
+    id: "executive-assistant-to-tagged-users",
+    senderPositions: ["executive_assistant"],
+    targetPositions: POSITION_CODES,
+    targetTags: [EXECUTIVE_ASSISTANT_ONLY_TAG],
+    scope: "global",
+    allowedTargetModes: ["PERSON"],
   },
   {
     id: "executive-functions-to-ceo",

@@ -56,6 +56,8 @@ export type TargetingRule = {
   sourceOrgUnitIds?: readonly string[];
   excludedSourceOrgUnitIds?: readonly string[];
   targetOrgUnitIds?: readonly string[];
+  senderTags?: readonly string[];
+  targetTags?: readonly string[];
   allowedTargetModes: readonly TargetMode[];
   allowSelf?: boolean;
 };
@@ -80,6 +82,7 @@ export type TargetingUser = {
   role: string | null;
   orgUnitId: string;
   positionCode: PositionCode;
+  tags: string[];
   requestRecipientKey: string | null;
 };
 

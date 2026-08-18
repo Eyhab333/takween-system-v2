@@ -48,6 +48,9 @@ function asTargetingUser(uid: string, data: Record<string, unknown>): TargetingU
     role: typeof data.role === "string" ? data.role : null,
     orgUnitId,
     positionCode,
+    tags: Array.isArray(data.tags)
+      ? data.tags.filter((tag): tag is string => typeof tag === "string")
+      : [],
     requestRecipientKey:
       typeof data.requestRecipientKey === "string" && data.requestRecipientKey
         ? data.requestRecipientKey
@@ -55,11 +58,22 @@ function asTargetingUser(uid: string, data: Record<string, unknown>): TargetingU
   };
 }
 
+function isActiveTargetingUser(data: Record<string, unknown>) {
+  return (
+    data.employmentStatus !== "inactive" &&
+    data.active !== false &&
+    data.disabled !== true &&
+    data.status !== "inactive"
+  );
+}
+
 async function loadTargetingUsers(): Promise<TargetingUser[]> {
   const { db } = getAdminServices();
   const snapshot = await db.collection("users").get();
   return snapshot.docs
-    .map((doc) => asTargetingUser(doc.id, doc.data() as Record<string, unknown>))
+    .map((doc) => ({ id: doc.id, data: doc.data() as Record<string, unknown> }))
+    .filter(({ data }) => isActiveTargetingUser(data))
+    .map(({ id, data }) => asTargetingUser(id, data))
     .filter((user): user is TargetingUser => user !== null);
 }
 
@@ -85,6 +99,9 @@ function recipientsForRule(
 
   const recipients = users.filter((candidate) => {
     if (!rule.targetPositions.includes(candidate.positionCode)) return false;
+    if (rule.targetTags && !rule.targetTags.every((tag) => candidate.tags.includes(tag))) {
+      return false;
+    }
     if (!rule.allowSelf && candidate.uid === sender.uid) return false;
     if (rule.targetOrgUnitIds && !rule.targetOrgUnitIds.includes(candidate.orgUnitId)) {
       return false;
@@ -115,13 +132,21 @@ function recipientsForRule(
 }
 
 function rulesForSender(sender: TargetingUser): TargetingRule[] {
-  return TARGETING_RULES.filter((rule) => {
+  const matchingRules = TARGETING_RULES.filter((rule) => {
     if (!rule.senderPositions.includes(sender.positionCode)) return false;
+    if (rule.senderTags && !rule.senderTags.every((tag) => sender.tags.includes(tag))) {
+      return false;
+    }
     if (rule.sourceOrgUnitIds && !rule.sourceOrgUnitIds.includes(sender.orgUnitId)) {
       return false;
     }
     return !rule.excludedSourceOrgUnitIds?.includes(sender.orgUnitId);
   });
+
+  const tagRules = matchingRules.filter((rule) => rule.senderTags?.length);
+  return tagRules.length > 0
+    ? tagRules
+    : matchingRules.filter((rule) => !rule.senderTags?.length);
 }
 
 function findSender(users: TargetingUser[], senderUid: string): TargetingUser {
@@ -142,6 +167,7 @@ export async function resolveAllowedPositionTargets(
   const resolved: ResolvedPositionTarget[] = [];
 
   for (const rule of rulesForSender(sender)) {
+    if (!rule.allowedTargetModes.includes("POSITION")) continue;
     const recipients = recipientsForRule(sender, rule, users);
     for (const positionCode of rule.targetPositions) {
       const positionRecipients = recipients.filter(
@@ -158,6 +184,21 @@ export async function resolveAllowedPositionTargets(
           recipients: positionRecipients.filter((user) => user.orgUnitId === orgUnitId),
         });
       }
+    }
+  }
+
+  return resolved;
+}
+
+export async function resolveAllowedPersonTargets(senderUid: string) {
+  const users = await loadTargetingUsers();
+  const sender = findSender(users, senderUid);
+  const resolved: Array<{ ruleId: string; recipient: TargetingUser }> = [];
+
+  for (const rule of rulesForSender(sender)) {
+    if (!rule.allowedTargetModes.includes("PERSON")) continue;
+    for (const recipient of recipientsForRule(sender, rule, users)) {
+      resolved.push({ ruleId: rule.id, recipient });
     }
   }
 

@@ -2,7 +2,7 @@ export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 import { NextRequest } from "next/server";
-import { FieldValue } from "firebase-admin/firestore";
+import { FieldValue, Timestamp, WriteBatch } from "firebase-admin/firestore";
 import { getAdminServices } from "@/lib/server/firebaseAdmin";
 import {
   audienceMatchesUser,
@@ -162,6 +162,58 @@ async function getDocumentProgress(document: ComplianceDocument) {
   };
 }
 
+async function createJobComplianceNotifications(params: {
+  documentId: string;
+  title: string;
+  requiresAcknowledgement: boolean;
+  targetUids: string[];
+}) {
+  const { db } = getAdminServices();
+  const uniqueUids = Array.from(new Set(params.targetUids));
+  const nowMs = Date.now();
+  const nowTs = Timestamp.fromMillis(nowMs);
+  const body = params.requiresAcknowledgement
+    ? `تم إضافة «${params.title}». يرجى الاطلاع والإقرار.`
+    : `تم إضافة «${params.title}». يرجى الاطلاع على المستند.`;
+  let sent = 0;
+
+  for (let start = 0; start < uniqueUids.length; start += 400) {
+    const uids = uniqueUids.slice(start, start + 400);
+    const refs = uids.map((uid) =>
+      db.collection("users").doc(uid).collection("notifications").doc(`job-compliance-${params.documentId}`),
+    );
+    const existing = await db.getAll(...refs);
+    let batch: WriteBatch = db.batch();
+    let count = 0;
+
+    for (let index = 0; index < refs.length; index += 1) {
+      if (existing[index]?.exists) continue;
+      batch.create(refs[index], {
+        title: "مستند التزام وظيفي جديد",
+        body,
+        type: "job_compliance",
+        link: `/employees/${uids[index]}/job-compliance`,
+        createdAt: nowTs,
+        createdAtMs: nowMs,
+        read: false,
+        jobComplianceDocumentId: params.documentId,
+      });
+      count += 1;
+      sent += 1;
+
+      if (count === 400) {
+        await batch.commit();
+        batch = db.batch();
+        count = 0;
+      }
+    }
+
+    if (count > 0) await batch.commit();
+  }
+
+  return sent;
+}
+
 export async function GET(req: NextRequest) {
   try {
     const requester = await requireManager(req);
@@ -254,6 +306,16 @@ export async function POST(req: NextRequest) {
       await storageFile.delete().catch(() => undefined);
       throw writeError;
     }
+
+    const targetEmployees = (await getTargetEmployees()).filter((employee) =>
+      audienceMatchesUser(audTokens, employee.audTokens),
+    );
+    await createJobComplianceNotifications({
+      documentId: documentRef.id,
+      title,
+      requiresAcknowledgement,
+      targetUids: targetEmployees.map((employee) => employee.uid),
+    });
 
     const created = await documentRef.get();
     return Response.json({ ok: true, document: toDocument(documentRef.id, created.data() as Record<string, unknown>) });

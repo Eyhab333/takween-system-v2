@@ -5,6 +5,7 @@ import { NextRequest } from "next/server";
 import { getRecipientByKey } from "@/lib/internal-requests/recipients";
 import {
   RequestTargetingError,
+  resolveAllowedPersonTargets,
   resolveAllowedPositionTargets,
 } from "@/lib/internal-requests/targeting";
 import { getAdminServices } from "@/lib/server/firebaseAdmin";
@@ -26,7 +27,10 @@ export async function GET(req: NextRequest) {
       return Response.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    const targets = await resolveAllowedPositionTargets(senderUid);
+    const [targets, personTargets] = await Promise.all([
+      resolveAllowedPositionTargets(senderUid),
+      resolveAllowedPersonTargets(senderUid),
+    ]);
     const recipients = new Map<
       string,
       {
@@ -85,6 +89,24 @@ export async function GET(req: NextRequest) {
           positionTargets: [positionTarget],
         });
       }
+    }
+
+    for (const { recipient: user } of personTargets) {
+      if (recipients.has(user.uid)) continue;
+      const legacyRecipient = user.requestRecipientKey
+        ? getRecipientByKey(user.requestRecipientKey)
+        : undefined;
+      recipients.set(user.uid, {
+        uid: user.uid,
+        label: legacyRecipient?.label || user.name || user.email || user.positionCode,
+        role: user.role,
+        orgUnitId: user.orgUnitId,
+        positionCode: user.positionCode,
+        legacyRecipientKey: legacyRecipient?.key ?? null,
+        legacyRecipientNumber: legacyRecipient?.number ?? null,
+        personTarget: { mode: "PERSON", uid: user.uid },
+        positionTargets: [],
+      });
     }
 
     return Response.json({
