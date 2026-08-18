@@ -119,9 +119,16 @@ async function getEmployeeResources(uid: string) {
   }));
 
   return managedResources
-    .filter(({ active }) => active)
-    .map(({ resource }) => resource)
-    .sort((a, b) => a.sortOrder - b.sortOrder);
+  .filter(
+    ({ active, resource }) =>
+      active &&
+      audienceMatchesUser(
+        resource.audTokens,
+        userTokens,
+      ),
+  )
+  .map(({ resource }) => resource)
+  .sort((a, b) => a.sortOrder - b.sortOrder);
 }
 
 async function getActiveResources() {
