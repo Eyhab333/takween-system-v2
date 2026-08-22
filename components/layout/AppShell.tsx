@@ -214,6 +214,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
                           priority
                           className="h-15 w-auto object-contain"
                         />
+                        <span className="mr-2 text-lg font-bold">نسق</span>
                       </button>
                     </div>
 
@@ -277,6 +278,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
                     priority
                     className="h-15 w-auto object-contain"
                   />
+                  <span className="mr-2 text-lg font-bold">نسق</span>
                 </Link>
 
                 <button

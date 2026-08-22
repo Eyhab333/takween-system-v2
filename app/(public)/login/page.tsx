@@ -93,6 +93,10 @@ export default function LoginPage() {
           />
         </div>
 
+<p className="text-center text-xl font-bold">
+  نسق
+</p>
+
         <h1 className="text-xl font-bold text-center">تسجيل الدخول</h1>
 
         <div className="space-y-1">
