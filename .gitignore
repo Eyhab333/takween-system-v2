@@ -10,6 +10,17 @@
 !.yarn/releases
 !.yarn/versions
 
+
+
+
+
+*.xlsx
+*.xls
+~$*.xlsx
+~$*.xls
+
+
+
 # testing
 /coverage
 # next.js
