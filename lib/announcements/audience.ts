@@ -1,4 +1,9 @@
 import type { Role } from "@/hooks/use-claims-role";
+import {
+  buildAudienceTokensFromSelection,
+  buildAudienceTokensFromUser,
+} from "@/lib/audience-tokens";
+import { POSITION_LABELS } from "@/lib/internal-requests/creator-label";
 
 export const SCHOOL_OPTIONS = [
   { key: "manar_boys_sayh", label: "منار الريادة بنين - السيح" },
@@ -46,76 +51,62 @@ export function buildAudienceTokens(params: {
   roles?: string[];
   schoolTypes?: string[];
   tags?: string[];
+  positionCodes?: string[];
+  personUids?: string[];
+  orgUnitPositions?: Array<{ orgUnitId: string; positionCode: string }>;
+  schoolTypePositions?: Array<{ schoolType: string; positionCode: string }>;
 }) {
-  const tokens: string[] = [];
-
-  if (params.all) {
-    tokens.push("all:all");
-  }
-
-  for (const school of params.schools ?? []) {
-    tokens.push(`schoolKey:${school}`);
-  }
-
-  for (const orgUnitId of params.orgUnitIds ?? []) {
-    tokens.push(`orgUnitId:${orgUnitId}`);
-  }
-
-  for (const unit of params.units ?? []) {
-    tokens.push(`unit:${unit}`);
-  }
-
-  for (const role of params.roles ?? []) {
-    tokens.push(`role:${role}`);
-  }
-
-  for (const schoolType of params.schoolTypes ?? []) {
-    tokens.push(`schoolType:${schoolType}`);
-  }
-
-  for (const tag of params.tags ?? []) {
-    tokens.push(`tag:${tag}`);
-  }
-
-  return Array.from(new Set(tokens));
+  return buildAudienceTokensFromSelection(params);
 }
 
 export function buildUserTokens(params: {
-  role?: Role | null;
+  uid?: string | null;
+  role?: string | null;
+  orgUnitId?: string | null;
+  positionCode?: string | null;
   unit?: string | null;
   schoolKey?: string | null;
   schoolType?: string | null;
   tags?: string[];
+  employmentStatus?: string | null;
+  active?: boolean | null;
+  disabled?: boolean | null;
+  status?: string | null;
 }) {
-  const tokens: string[] = ["all:all"];
-
-  if (params.role) {
-    tokens.push(`role:${params.role}`);
-  }
-
-  if (params.unit) {
-    tokens.push(`unit:${params.unit}`);
-  }
-
-  if (params.schoolKey) {
-    tokens.push(`schoolKey:${params.schoolKey}`);
-  }
-
-  if (params.schoolType) {
-    tokens.push(`schoolType:${params.schoolType}`);
-  }
-
-  for (const tag of params.tags ?? []) {
-    if (tag?.trim()) {
-      tokens.push(`tag:${tag.trim()}`);
-    }
-  }
-
-  return Array.from(new Set(tokens));
+  return buildAudienceTokensFromUser(params as Record<string, unknown>, params.uid);
 }
 
 export function audienceLabel(token: string) {
   if (token === "all:all") return "للجميع";
+
+  if (token.startsWith("person:")) {
+    return "شخص محدد";
+  }
+
+  if (token.startsWith("orgUnitPosition:")) {
+    const [, orgUnitId, positionCode] = token.split(":");
+    const orgUnitLabel =
+      SCHOOL_OPTIONS.find((x) => x.key === orgUnitId)?.label ?? orgUnitId;
+    return `${POSITION_LABELS[positionCode] ?? positionCode} — ${orgUnitLabel}`;
+  }
+
+  if (token.startsWith("schoolTypePosition:")) {
+    const [, schoolType, positionCode] = token.split(":");
+    if (schoolType === "kg" && positionCode === "principal") {
+      return "مديرات الروضات";
+    }
+    if (schoolType === "primary" && positionCode === "principal") {
+      return "مديرو المدارس";
+    }
+    const schoolTypeLabel =
+      SCHOOL_TYPE_OPTIONS.find((x) => x.key === schoolType)?.label ?? schoolType;
+    return `${POSITION_LABELS[positionCode] ?? positionCode} — ${schoolTypeLabel}`;
+  }
+
+  if (token.startsWith("position:")) {
+    const key = token.replace("position:", "");
+    return POSITION_LABELS[key] ?? key;
+  }
 
   if (token.startsWith("role:")) {
     const key = token.replace("role:", "");

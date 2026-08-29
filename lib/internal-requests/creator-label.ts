@@ -1,4 +1,4 @@
-const POSITION_LABELS: Record<string, string> = {
+export const POSITION_LABELS: Record<string, string> = {
   teacher: "معلم", administrative_staff: "إداري", principal: "مدير", deputy_principal: "وكيل",
   supervisor: "مشرف", educational_supervisor: "مشرف تعليمي", administrative_supervisor: "مشرف إداري",
   supervision_head: "رئيس الإشراف", supervision_coordinator: "منسق الإشراف", hr: "الموارد البشرية",

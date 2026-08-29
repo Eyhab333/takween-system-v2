@@ -24,6 +24,10 @@ import {
   audienceLabel,
   buildUserTokens,
 } from "@/lib/announcements/audience";
+import {
+  audienceMatchesUser,
+  documentAudienceTokens,
+} from "@/lib/audience-tokens";
 
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -117,25 +121,60 @@ export default function AnnouncementsPage() {
             null;
 
           const tokens = buildUserTokens({
+            uid,
             role: effectiveRole,
+            orgUnitId: userData?.orgUnitId ?? null,
+            positionCode: userData?.positionCode ?? null,
             unit: userData?.unit ?? null,
             schoolKey: userData?.schoolKey ?? null,
             schoolType: userData?.schoolType ?? null,
             tags: Array.isArray(userData?.tags) ? userData.tags : [],
-          }).slice(0, 10);
+            employmentStatus: userData?.employmentStatus ?? null,
+            active: userData?.active ?? null,
+            disabled: userData?.disabled ?? null,
+            status: userData?.status ?? null,
+          });
 
-          const targetedQuery = query(
-            collection(db, "announcements"),
-            where("audTokens", "array-contains-any", tokens),
-            orderBy("createdAt", "desc"),
-            limit(100),
+          const tokenChunks = Array.from(
+            { length: Math.ceil(tokens.length / 30) },
+            (_, index) => tokens.slice(index * 30, index * 30 + 30),
+          );
+          const snapshots = await Promise.all(
+            tokenChunks.map((tokenChunk) =>
+              getDocs(
+                query(
+                  collection(db, "announcements"),
+                  where("audTokens", "array-contains-any", tokenChunk),
+                  orderBy("createdAt", "desc"),
+                  limit(100),
+                ),
+              ),
+            ),
           );
 
-          const snap = await getDocs(targetedQuery);
-          result = snap.docs.map((d) => ({
-            id: d.id,
-            ...(d.data() as Omit<Announcement, "id">),
-          }));
+          const uniqueAnnouncements = new Map<string, Announcement>();
+          for (const snapshot of snapshots) {
+            for (const document of snapshot.docs) {
+              const announcement = {
+                id: document.id,
+                ...(document.data() as Omit<Announcement, "id">),
+              };
+              if (
+                audienceMatchesUser(
+                  documentAudienceTokens(announcement as Record<string, unknown>),
+                  tokens,
+                )
+              ) {
+                uniqueAnnouncements.set(announcement.id, announcement);
+              }
+            }
+          }
+
+          result = [...uniqueAnnouncements.values()].sort((a, b) => {
+            const aMs = a.createdAt?.toMillis?.() ?? 0;
+            const bMs = b.createdAt?.toMillis?.() ?? 0;
+            return bMs - aMs;
+          });
         }
 
         if (!cancelled) {

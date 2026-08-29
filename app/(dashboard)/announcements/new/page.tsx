@@ -31,6 +31,18 @@ import { Button } from "@/components/ui/button";
 
 const MAX_PDF_SIZE_MB = 10;
 
+type AudiencePerson = {
+  uid: string;
+  label: string;
+};
+
+type ManagementGroup = {
+  id: string;
+  label: string;
+  schoolType: string;
+  positionCode: string;
+};
+
 function toggleInList(
   current: string[],
   value: string,
@@ -102,7 +114,15 @@ export default function NewAnnouncementPage() {
   const [selectedUnits, setSelectedUnits] = useState<string[]>([]);
   const [selectedSchools, setSelectedSchools] = useState<string[]>([]);
   const [selectedSchoolTypes, setSelectedSchoolTypes] = useState<string[]>([]);
+  const [selectedPositionCodes, setSelectedPositionCodes] = useState<string[]>([]);
+  const [selectedManagementGroupIds, setSelectedManagementGroupIds] = useState<string[]>([]);
+  const [selectedPersonUids, setSelectedPersonUids] = useState<string[]>([]);
   const [tagsInput, setTagsInput] = useState("");
+  const [positionOptions, setPositionOptions] = useState<Array<{ key: string; label: string }>>([]);
+  const [managementGroups, setManagementGroups] = useState<ManagementGroup[]>([]);
+  const [people, setPeople] = useState<AudiencePerson[]>([]);
+  const [peopleQuery, setPeopleQuery] = useState("");
+  const [audienceOptionsLoading, setAudienceOptionsLoading] = useState(true);
 
   const [pdfFile, setPdfFile] = useState<File | null>(null);
   const pdfInputRef = useRef<HTMLInputElement | null>(null);
@@ -113,6 +133,44 @@ export default function NewAnnouncementPage() {
       router.replace("/announcements");
     }
   }, [loading, role, router]);
+
+  useEffect(() => {
+    if (loading || role !== "superadmin") return;
+
+    let cancelled = false;
+
+    (async () => {
+      try {
+        const token = await auth.currentUser?.getIdToken();
+        if (!token) throw new Error("تعذر التحقق من جلسة المستخدم");
+
+        const response = await fetch("/api/announcements/audience-options", {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        const data = await response.json().catch(() => null);
+        if (!response.ok) {
+          throw new Error(data?.error || "تعذر تحميل خيارات الجمهور");
+        }
+
+        if (!cancelled) {
+          setPositionOptions(Array.isArray(data?.positions) ? data.positions : []);
+          setManagementGroups(
+            Array.isArray(data?.managementGroups) ? data.managementGroups : [],
+          );
+          setPeople(Array.isArray(data?.people) ? data.people : []);
+        }
+      } catch (error) {
+        console.error("announcement audience options error:", error);
+        if (!cancelled) toast.error("تعذر تحميل خيارات الجمهور");
+      } finally {
+        if (!cancelled) setAudienceOptionsLoading(false);
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [loading, role]);
 
   if (loading || role !== "superadmin") {
     return null;
@@ -166,6 +224,14 @@ export default function NewAnnouncementPage() {
       schools: selectedSchools,
       schoolTypes: selectedSchoolTypes,
       tags,
+      positionCodes: selectedPositionCodes,
+      personUids: selectedPersonUids,
+      schoolTypePositions: selectedManagementGroupIds.flatMap((groupId) => {
+        const group = managementGroups.find((item) => item.id === groupId);
+        return group
+          ? [{ schoolType: group.schoolType, positionCode: group.positionCode }]
+          : [];
+      }),
     });
 
     if (audTokens.length === 0) {
@@ -255,6 +321,14 @@ export default function NewAnnouncementPage() {
     });
   }
 
+  const visiblePeople = people
+    .filter((person) =>
+      person.label
+        .toLocaleLowerCase("ar")
+        .includes(peopleQuery.trim().toLocaleLowerCase("ar")),
+    )
+    .slice(0, 60);
+
   return (
     <div className="mx-auto max-w-4xl">
       <Card>
@@ -332,6 +406,75 @@ export default function NewAnnouncementPage() {
               disabled={allUsers}
               onChange={setSelectedSchoolTypes}
             />
+
+            <CheckboxGroup
+              title="حسب الوظيفة"
+              items={positionOptions}
+              values={selectedPositionCodes}
+              disabled={allUsers || audienceOptionsLoading}
+              onChange={setSelectedPositionCodes}
+            />
+
+            <CheckboxGroup
+              title="مجموعات إدارية"
+              items={managementGroups.map((group) => ({
+                key: group.id,
+                label: group.label,
+              }))}
+              values={selectedManagementGroupIds}
+              disabled={allUsers || audienceOptionsLoading}
+              onChange={setSelectedManagementGroupIds}
+            />
+
+            <div className="grid gap-2">
+              <Label className="text-xs">أشخاص محددون</Label>
+              <Input
+                value={peopleQuery}
+                onChange={(event) => setPeopleQuery(event.target.value)}
+                disabled={allUsers || audienceOptionsLoading}
+                placeholder="ابحث بالاسم أو الوظيفة أو الجهة"
+              />
+              <div className="grid gap-2 rounded-md border p-3">
+                {audienceOptionsLoading ? (
+                  <div className="text-xs text-muted-foreground">جارٍ تحميل الموظفين...</div>
+                ) : visiblePeople.length === 0 ? (
+                  <div className="text-xs text-muted-foreground">لا توجد نتائج مطابقة.</div>
+                ) : (
+                  visiblePeople.map((person) => {
+                    const checked = selectedPersonUids.includes(person.uid);
+                    return (
+                      <label
+                        key={person.uid}
+                        className={`flex items-center gap-2 rounded-md border px-3 py-2 text-sm ${
+                          allUsers ? "opacity-60" : "cursor-pointer"
+                        }`}
+                      >
+                        <input
+                          type="checkbox"
+                          disabled={allUsers}
+                          checked={checked}
+                          onChange={(event) =>
+                            setSelectedPersonUids(
+                              toggleInList(
+                                selectedPersonUids,
+                                person.uid,
+                                event.target.checked,
+                              ),
+                            )
+                          }
+                        />
+                        <span>{person.label}</span>
+                      </label>
+                    );
+                  })
+                )}
+              </div>
+              {!audienceOptionsLoading && people.length > visiblePeople.length ? (
+                <div className="text-[11px] text-muted-foreground">
+                  تظهر أول 60 نتيجة؛ استخدم البحث لتضييق القائمة.
+                </div>
+              ) : null}
+            </div>
 
             <div className="grid gap-2">
               <Label className="text-xs">وسوم إضافية</Label>
