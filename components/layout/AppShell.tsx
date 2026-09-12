@@ -25,6 +25,8 @@ import {
   ShieldCheck,
   User,
 } from "lucide-react";
+import { doc, getDoc } from "firebase/firestore";
+import { db } from "@/lib/firebase";
 
 type NavItem = {
   label: string;
@@ -51,11 +53,6 @@ const NAV_ITEMS: NavItem[] = [
   { label: "المراسلات", href: "/dashboard", minRole: "employee" },
   { label: "التعاميم", href: "/announcements", minRole: "employee" },
   { label: "الالتزام الوظيفي", href: "/job-compliance", minRole: "hr" },
-  // { label: "إنشاء طلب", href: "/requests/new", minRole: "employee" },
-  // { label: "الوارد", href: "/requests/inbox", minRole: "employee" },
-  // { label: "الصادر", href: "/requests/outbox", minRole: "employee" },
-  // { label: "الأرشيف", href: "/requests/archive", minRole: "employee" },
-
   { label: "إنشاء تعميم", href: "/announcements/new", minRole: "superadmin" },
 ];
 
@@ -68,6 +65,45 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
   const isHrOrAbove = hasRoleAtLeast(role, "hr");
   const isSuperadmin = hasRoleAtLeast(role, "superadmin");
   const ownEmployeeRoot = uid ? `/employees/${uid}` : null;
+
+  const [profile, setProfile] = useState<{
+    name: string;
+    position: string;
+    workLocation: string;
+  } | null>(null);
+
+  useEffect(() => {
+    if (!uid) {
+      setProfile(null);
+      return;
+    }
+
+    const currentUid = uid;
+    let cancelled = false;
+
+    async function loadProfile() {
+      const snap = await getDoc(doc(db, "users", currentUid));
+      if (!snap.exists() || cancelled) return;
+
+      const data = snap.data() as Record<string, unknown>;
+      const personalInfo =
+        (data.personalInfo as Record<string, unknown> | undefined) || {};
+
+      setProfile({
+        name: String(data.name || data.displayName || data.email || "الموظف"),
+        position: String(data.position || data.role || "موظف"),
+        workLocation: String(
+          data.department || data.schoolKey || data.orgUnitId || "",
+        ),
+      });
+    }
+
+    loadProfile().catch(console.error);
+
+    return () => {
+      cancelled = true;
+    };
+  }, [uid]);
 
   const isForbiddenPath = useMemo(() => {
     if (!pathname) return false;
@@ -139,6 +175,19 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
     <div className="min-h-screen grid md:grid-cols-[240px_1fr]">
       <aside className="hidden border-l md:sticky md:top-14 md:block md:h-[calc(100vh-3.5rem)] md:self-start">
         <div className="space-y-2 p-4">
+          {profile && (
+            <div className="mb-4 rounded-xl border bg-muted/40 p-3 text-sm">
+              <div className="font-semibold">أهلًا، {profile.name}</div>
+              <div className="mt-1 text-xs text-muted-foreground">
+                {profile.position}
+              </div>
+              {profile.workLocation && (
+                <div className="mt-1 text-xs text-muted-foreground">
+                  {profile.workLocation}
+                </div>
+              )}
+            </div>
+          )}
           {items.map((it) => {
             const targetHref =
               it.href === "/me" && uid ? `/employees/${uid}` : it.href;
@@ -219,6 +268,21 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
                     </div>
 
                     <div className="space-y-2 p-4">
+                      {profile && (
+                        <div className="mb-4 rounded-xl border bg-muted/40 p-3 text-sm">
+                          <div className="font-semibold">
+                            أهلًا، {profile.name}
+                          </div>
+                          <div className="mt-1 text-xs text-muted-foreground">
+                            {profile.position}
+                          </div>
+                          {profile.workLocation && (
+                            <div className="mt-1 text-xs text-muted-foreground">
+                              {profile.workLocation}
+                            </div>
+                          )}
+                        </div>
+                      )}
                       {items.map((it) => {
                         const targetHref =
                           it.href === "/me" && uid
