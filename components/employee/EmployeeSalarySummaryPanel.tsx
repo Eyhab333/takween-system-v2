@@ -29,6 +29,7 @@ type SalarySummaryRow = {
   absenceDeductionAmount: number | null;
   lateDeductionAmount: number | null;
   insuranceDeduction: number | null;
+  advanceDeduction: number | null;
   qorraAllowance: number | null;
   busAllowance: number | null;
   totalAllowances: number | null;
@@ -206,7 +207,9 @@ export default function EmployeeSalarySummaryPanel({
           </div>
 
           <div className="text-sm text-transparent">
-            <span className="text-emerald-900">اختر الشهر لعرض كشف الراتب.</span>
+            <span className="text-emerald-900">
+              اختر الشهر لعرض كشف الراتب.
+            </span>
             {selected
               ? `كشف راتب شهر ${monthLabel(selected.monthKey, selected.month)} ${selected.year}`
               : "اختر الشهر والسنة لعرض كشف الراتب."}
@@ -359,6 +362,13 @@ export default function EmployeeSalarySummaryPanel({
                   <DetailItem
                     label="خصم التأمينات"
                     value={formatCurrency(selected.insuranceDeduction)}
+                  />
+                )}
+
+                {hasPositiveAmount(selected.advanceDeduction) && (
+                  <DetailItem
+                    label="السلفة"
+                    value={formatCurrency(selected.advanceDeduction)}
                   />
                 )}
 
