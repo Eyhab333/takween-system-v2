@@ -20,6 +20,7 @@ type SalarySummaryRow = {
   absenceDeductionAmount: number | null;
   lateDeductionAmount: number | null;
   insuranceDeduction: number | null;
+  advanceDeduction: number | null;
   qorraAllowance: number | null;
   busAllowance: number | null;
   totalAllowances: number | null;
@@ -47,7 +48,7 @@ const SPREADSHEET_ID =
 const SALARY_SUMMARY_SHEET = {
   spreadsheetId: SPREADSHEET_ID,
   sheetName: "ملخص_الراتب_للمنصة",
-  range: "A:R",
+  range: "A:S",
 };
 
 const CURRENT_CONTRACT_YEAR_MESSAGE =
@@ -96,7 +97,9 @@ function normalizeDigits(value: string) {
 }
 
 function normalizeId(value: unknown) {
-  return normalizeDigits(String(value ?? "")).replace(/[^\d]/g, "").trim();
+  return normalizeDigits(String(value ?? ""))
+    .replace(/[^\d]/g, "")
+    .trim();
 }
 
 function escapeSheetName(name: string) {
@@ -255,11 +258,9 @@ function parseSalarySummaryRows(
     headerMap,
     "مبلغ خصم الغياب",
   );
-  const lateDeductionAmountIdx = indexOfRequired(
-    headerMap,
-    "مبلغ خصم التأخر",
-  );
+  const lateDeductionAmountIdx = indexOfRequired(headerMap, "مبلغ خصم التأخر");
   const insuranceDeductionIdx = indexOfRequired(headerMap, "خصم التأمينات");
+  const advanceDeductionIdx = indexOfRequired(headerMap, "السلفة");
   const qorraAllowanceIdx = indexOfRequired(headerMap, "بدل برنامج قرة");
   const busAllowanceIdx = indexOfRequired(headerMap, "بدل الباص");
   const totalAllowancesIdx = indexOfRequired(headerMap, "إجمالي البدلات");
@@ -280,6 +281,7 @@ function parseSalarySummaryRows(
     absenceDeductionAmountIdx,
     lateDeductionAmountIdx,
     insuranceDeductionIdx,
+    advanceDeductionIdx,
     qorraAllowanceIdx,
     busAllowanceIdx,
     totalAllowancesIdx,
@@ -288,7 +290,9 @@ function parseSalarySummaryRows(
   ];
 
   if (required.some((i) => i === -1)) {
-    throw new Error("بعض الأعمدة المطلوبة غير موجودة في شيت ملخص_الراتب_للمنصة");
+    throw new Error(
+      "بعض الأعمدة المطلوبة غير موجودة في شيت ملخص_الراتب_للمنصة",
+    );
   }
 
   return dataRows
@@ -319,6 +323,7 @@ function parseSalarySummaryRows(
           cell(row, lateDeductionAmountIdx),
         ),
         insuranceDeduction: parseArabicNumber(cell(row, insuranceDeductionIdx)),
+        advanceDeduction: parseArabicNumber(cell(row, advanceDeductionIdx)),
         qorraAllowance: parseArabicNumber(cell(row, qorraAllowanceIdx)),
         busAllowance: parseArabicNumber(cell(row, busAllowanceIdx)),
         totalAllowances: parseArabicNumber(cell(row, totalAllowancesIdx)),
@@ -364,7 +369,10 @@ export async function GET(req: NextRequest) {
 
     if (!isHrOrAbove) {
       const app = getAdminApp();
-      const userSnap = await app.firestore().doc(`users/${requester.uid}`).get();
+      const userSnap = await app
+        .firestore()
+        .doc(`users/${requester.uid}`)
+        .get();
 
       if (!userSnap.exists) {
         return Response.json(
