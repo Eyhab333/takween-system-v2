@@ -23,6 +23,8 @@ type SalarySummaryRow = {
   advanceDeduction: number | null;
   qorraAllowance: number | null;
   busAllowance: number | null;
+  otherEarnings: number | null;
+  otherEarningsDetails: string;
   totalAllowances: number | null;
   totalDeductions: number | null;
   notes: string;
@@ -48,7 +50,7 @@ const SPREADSHEET_ID =
 const SALARY_SUMMARY_SHEET = {
   spreadsheetId: SPREADSHEET_ID,
   sheetName: "ملخص_الراتب_للمنصة",
-  range: "A:S",
+  range: "A:U",
 };
 
 const CURRENT_CONTRACT_YEAR_MESSAGE =
@@ -263,6 +265,11 @@ function parseSalarySummaryRows(
   const advanceDeductionIdx = indexOfRequired(headerMap, "السلفة");
   const qorraAllowanceIdx = indexOfRequired(headerMap, "بدل برنامج قرة");
   const busAllowanceIdx = indexOfRequired(headerMap, "بدل الباص");
+  const otherEarningsIdx = indexOfRequired(headerMap, "دخل آخر");
+  const otherEarningsDetailsIdx = indexOfRequired(
+    headerMap,
+    "تفاصيل الدخل الآخر",
+  );
   const totalAllowancesIdx = indexOfRequired(headerMap, "إجمالي البدلات");
   const totalDeductionsIdx = indexOfRequired(headerMap, "إجمالي الخصومات");
   const notesIdx = indexOfRequired(headerMap, "ملاحظات");
@@ -284,6 +291,8 @@ function parseSalarySummaryRows(
     advanceDeductionIdx,
     qorraAllowanceIdx,
     busAllowanceIdx,
+    otherEarningsIdx,
+    otherEarningsDetailsIdx,
     totalAllowancesIdx,
     totalDeductionsIdx,
     notesIdx,
@@ -326,6 +335,8 @@ function parseSalarySummaryRows(
         advanceDeduction: parseArabicNumber(cell(row, advanceDeductionIdx)),
         qorraAllowance: parseArabicNumber(cell(row, qorraAllowanceIdx)),
         busAllowance: parseArabicNumber(cell(row, busAllowanceIdx)),
+        otherEarnings: parseArabicNumber(cell(row, otherEarningsIdx)),
+        otherEarningsDetails: normalizeText(cell(row, otherEarningsDetailsIdx)),
         totalAllowances: parseArabicNumber(cell(row, totalAllowancesIdx)),
         totalDeductions: parseArabicNumber(cell(row, totalDeductionsIdx)),
         notes: normalizeText(cell(row, notesIdx)),

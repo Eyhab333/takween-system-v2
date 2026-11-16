@@ -32,6 +32,8 @@ type SalarySummaryRow = {
   advanceDeduction: number | null;
   qorraAllowance: number | null;
   busAllowance: number | null;
+  otherEarnings: number | null;
+  otherEarningsDetails: string;
   totalAllowances: number | null;
   totalDeductions: number | null;
   notes: string;
@@ -385,6 +387,21 @@ export default function EmployeeSalarySummaryPanel({
                     value={formatCurrency(selected.busAllowance)}
                   />
                 )}
+
+                {hasPositiveAmount(selected.otherEarnings) && (
+                  <DetailItem
+                    label="دخل آخر"
+                    value={formatCurrency(selected.otherEarnings)}
+                  />
+                )}
+
+                {hasPositiveAmount(selected.otherEarnings) &&
+                  selected.otherEarningsDetails && (
+                    <DetailItem
+                      label="تفاصيل الدخل الآخر"
+                      value={selected.otherEarningsDetails}
+                    />
+                  )}
 
                 {hasPositiveAmount(selected.totalAllowances) && (
                   <DetailItem
